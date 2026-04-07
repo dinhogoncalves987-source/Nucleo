@@ -101,6 +101,108 @@ router.get('/session/info', (req, res) => {
   res.json(info ?? { message: 'Sessao nao encontrada' })
 })
 
+// POST /api/james/suggest-memory — Gera sugestões de resposta para treinamento
+router.post('/suggest-memory', async (req, res) => {
+  const { question, category } = req.body as { question?: string; category?: string }
+
+  if (!question || question.trim().length < 5) {
+    res.status(400).json({ error: 'Preencha o campo "Pergunta ou contexto" com pelo menos 5 caracteres.' })
+    return
+  }
+
+  try {
+    const systemPrompt = `Você é James, um executivo digital de alto nível. Sua função é gerar respostas-modelo para treinar uma IA executiva.
+
+Dado o contexto/pergunta abaixo, gere exatamente 3 variações de resposta ideal, cada uma com um estilo distinto:
+
+1. **DIRETO** — Resposta curta, objetiva, sem floreio. Vai direto ao ponto com ação clara.
+2. **ANALÍTICO** — Resposta com leitura de dados, causa-efeito e diagnóstico. Mostra raciocínio.
+3. **ESTRATÉGICO** — Resposta de alto nível com visão de negócio, posicionamento e próximos passos.
+
+Regras:
+- Cada resposta deve ter entre 40 e 120 palavras
+- Tom executivo: sem linguagem de chatbot, sem "claro!", sem "com certeza!"
+- Foco em decisão, resultado, risco e próxima ação
+- Categoria do contexto: ${category || 'geral'}
+
+Retorne EXATAMENTE no formato JSON (sem markdown, sem código):
+[
+  {"style": "direto", "label": "Direto", "response": "..."},
+  {"style": "analitico", "label": "Analítico", "response": "..."},
+  {"style": "estrategico", "label": "Estratégico", "response": "..."}
+]`
+
+    const result = await completeText([
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: question.trim() },
+    ], { max_tokens: 800, temperature: 0.8 })
+
+    // Parse JSON response
+    const jsonMatch = result.match(/\[[\s\S]*\]/)
+    if (!jsonMatch) {
+      logger.warn('[SUGGEST-MEMORY] Failed to parse JSON from response:', result.slice(0, 200))
+      res.status(500).json({ error: 'Falha ao gerar sugestões. Tente novamente.' })
+      return
+    }
+
+    const suggestions = JSON.parse(jsonMatch[0])
+    logger.info(`[SUGGEST-MEMORY] Generated ${suggestions.length} suggestions for: "${question.slice(0, 40)}"`)
+    res.json({ suggestions })
+  } catch (err) {
+    logger.error('[SUGGEST-MEMORY] Error:', err)
+    res.status(500).json({ error: 'Erro ao gerar sugestões.' })
+  }
+})
+
+// POST /api/james/intel-think — Contextual Intel assistant (custom system prompt)
+router.post('/intel-think', async (req, res) => {
+  const { message, systemPrompt } = req.body as {
+    message?: string; systemPrompt?: string
+  }
+
+  if (!message || message.trim().length < 2) {
+    res.status(400).json({ error: 'message é obrigatório' }); return
+  }
+
+  try {
+    const reply = await completeText([
+      { role: 'system', content: systemPrompt || 'Você é James, um assistente executivo digital.' },
+      { role: 'user', content: message.trim() },
+    ], { max_tokens: 300, temperature: 0.7 })
+
+    logger.info(`[INTEL-THINK] "${message.trim().slice(0, 50)}" → ${reply.length} chars`)
+    res.json({ reply })
+  } catch (err) {
+    logger.error('[INTEL-THINK] Error:', err)
+    res.status(500).json({ error: 'Erro ao processar.' })
+  }
+})
+
+// POST /api/james/tts — Text-to-speech via OpenAI
+router.post('/tts', async (req, res) => {
+  const { text, voice } = req.body as { text?: string; voice?: string }
+
+  if (!text || text.trim().length < 1) {
+    res.status(400).json({ error: 'text é obrigatório' }); return
+  }
+
+  try {
+    const mp3 = await openai.audio.speech.create({
+      model: 'tts-1',
+      voice: (voice as 'alloy' | 'echo' | 'fable' | 'onyx' | 'nova' | 'shimmer') || 'onyx',
+      input: text.trim().slice(0, 500),
+      speed: 1.05,
+    })
+
+    const buffer = Buffer.from(await mp3.arrayBuffer())
+    res.set({ 'Content-Type': 'audio/mpeg', 'Content-Length': String(buffer.length) })
+    res.send(buffer)
+  } catch (err) {
+    logger.error('[TTS] Error:', err)
+    res.status(500).json({ error: 'Erro ao gerar áudio.' })
+  }
+})
+
 // POST /api/james/think-stream
 router.post('/think-stream', async (req, res) => {
   const { message, tenant_id, origin, sessionId } = req.body as {
@@ -205,32 +307,7 @@ router.post('/think-stream', async (req, res) => {
   }
 })
 
-// POST /api/james/tts
-router.post('/tts', async (req, res) => {
-  try {
-    const { text, voice = 'onyx' } = req.body as { text: string; voice?: string }
-    if (!text || typeof text !== 'string') {
-      res.status(400).json({ error: 'text e obrigatorio' }); return
-    }
-
-    const mp3 = await openai.audio.speech.create({
-      model: 'tts-1',
-      voice: voice as 'onyx' | 'alloy' | 'echo' | 'fable' | 'nova' | 'shimmer',
-      input: text.slice(0, 4096),
-    })
-
-    const buffer = Buffer.from(await mp3.arrayBuffer())
-    res.set({
-      'Content-Type': 'audio/mpeg',
-      'Content-Length': buffer.length.toString(),
-      'Cache-Control': 'no-cache',
-    })
-    res.send(buffer)
-  } catch (err) {
-    logger.error('[JAMES TTS] Erro', err)
-    res.status(500).json({ error: 'Falha no TTS' })
-  }
-})
+// (Duplicate TTS route removed — handled by POST /tts at line 182)
 
 // POST /api/james/generate/rescue-message
 router.post('/generate/rescue-message', async (req, res) => {

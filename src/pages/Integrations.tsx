@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
-import { Plug, Eye, EyeOff, Save, CheckCircle2, RefreshCw, Users, Calendar } from 'lucide-react'
+import { Plug, Eye, EyeOff, Save, CheckCircle2, RefreshCw, Users, Calendar, Bot } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
 import { useTenant } from '../contexts/TenantContext'
 import { supabase } from '../lib/supabase'
 import { bubbleHealthCheck, BubbleClientes, BubbleAgendamentos } from '../lib/bubble'
+import { checkOpenAIKey } from '../lib/openai'
 
 interface IntegrationState {
   service: string; label: string; description: string
@@ -26,10 +27,12 @@ export default function Integrations() {
   const [loading, setLoading] = useState(true)
   const [bubbleStatus, setBubbleStatus] = useState<'checking' | 'online' | 'offline'>('checking')
   const [bubbleStats, setBubbleStats] = useState<{ clientes: number; agendamentos: number } | null>(null)
+  const [openaiStatus, setOpenaiStatus] = useState<'checking' | 'online' | 'offline'>('checking')
 
   useEffect(() => {
     if (tenant?.id) fetchKeys()
     checkBubble()
+    checkOpenAI()
   }, [tenant])
 
   const fetchKeys = async () => {
@@ -61,10 +64,23 @@ export default function Integrations() {
           BubbleAgendamentos.list(1),
         ])
         setBubbleStats({ clientes: clientes.length, agendamentos: agendamentos.length })
-        // Quick count
         const [allC, allA] = await Promise.all([BubbleClientes.list(200), BubbleAgendamentos.list(200)])
         setBubbleStats({ clientes: allC.length, agendamentos: allA.length })
       } catch { /* silently ignore */ }
+    }
+  }
+
+  const checkOpenAI = async () => {
+    setOpenaiStatus('checking')
+    const ok = await checkOpenAIKey()
+    setOpenaiStatus(ok ? 'online' : 'offline')
+    // If backend has a working key, show masked indicator in the UI
+    if (ok) {
+      setIntegrations(prev => prev.map(i =>
+        i.service === 'openai' && !i.apiKey
+          ? { ...i, apiKey: 'sk-●●●●●●●●●●●●●●●● (configurada no backend)' }
+          : i
+      ))
     }
   }
 
@@ -72,70 +88,138 @@ export default function Integrations() {
     setIntegrations(prev => prev.map(i => i.service === service ? { ...i, [field]: value } : i))
 
   const handleSave = async (integ: IntegrationState) => {
+    // Don't save the masked placeholder to Supabase
+    const keyToSave = integ.apiKey.includes('●●●') ? '' : integ.apiKey
     await supabase.from('api_keys').upsert({
       tenant_id: tenant!.id,
       service_name: integ.service,
-      api_key: integ.apiKey,
+      api_key: keyToSave,
       webhook_url: integ.webhookUrl || null,
     }, { onConflict: 'tenant_id,service_name' })
 
-    // OpenAI key também vai para localStorage (para openai.ts usar imediatamente)
     setSavedService(integ.service)
     setTimeout(() => setSavedService(null), 2500)
     if (integ.service === 'bubble') checkBubble()
+    if (integ.service === 'openai') checkOpenAI()
   }
 
   return (
     <AppLayout title="Conexões & APIs" subtitle="Credenciais e status das integrações">
-      {/* Bubble Status Card */}
-      <div className="card mb-4 animate-fade-in" style={{
-        borderColor: bubbleStatus === 'online' ? '#10b981' : bubbleStatus === 'offline' ? '#ef4444' : 'var(--border)',
-      }}>
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#3b82f618', color: '#3b82f6' }}>
-              <Plug size={18} />
+      {/* Status Cards Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        {/* Bubble Status Card */}
+        <div className="card animate-fade-in" style={{
+          borderColor: bubbleStatus === 'online' ? '#10b981' : bubbleStatus === 'offline' ? '#ef4444' : 'var(--border)',
+        }}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#3b82f618', color: '#3b82f6' }}>
+                <Plug size={18} />
+              </div>
+              <div>
+                <p className="font-semibold text-sm" style={{ color: 'var(--text-main)' }}>Bubble.io — The Beauty Hub</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>thebeautyhub.com.br</p>
+              </div>
             </div>
-            <div>
-              <p className="font-semibold text-sm" style={{ color: 'var(--text-main)' }}>Bubble.io — The Beauty Hub</p>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>thebeautyhub.com.br</p>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full" style={{
+                  background: bubbleStatus === 'online' ? '#10b981' : bubbleStatus === 'offline' ? '#ef4444' : '#f59e0b',
+                  boxShadow: bubbleStatus === 'online' ? '0 0 6px #10b981' : 'none',
+                }} />
+                <span className="text-xs font-medium" style={{
+                  color: bubbleStatus === 'online' ? '#10b981' : bubbleStatus === 'offline' ? '#ef4444' : '#f59e0b',
+                }}>
+                  {bubbleStatus === 'checking' ? 'Verificando...' : bubbleStatus === 'online' ? 'Conectado' : 'Desconectado'}
+                </span>
+              </div>
+              <button onClick={checkBubble} className="btn-secondary py-1 px-2 gap-1 text-xs">
+                <RefreshCw size={11} /> Testar
+              </button>
             </div>
           </div>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full" style={{
-                background: bubbleStatus === 'online' ? '#10b981' : bubbleStatus === 'offline' ? '#ef4444' : '#f59e0b',
-                boxShadow: bubbleStatus === 'online' ? '0 0 6px #10b981' : 'none',
-              }} />
-              <span className="text-xs font-medium" style={{
-                color: bubbleStatus === 'online' ? '#10b981' : bubbleStatus === 'offline' ? '#ef4444' : '#f59e0b',
-              }}>
-                {bubbleStatus === 'checking' ? 'Verificando...' : bubbleStatus === 'online' ? 'Conectado' : 'Desconectado'}
-              </span>
+          {bubbleStatus === 'online' && bubbleStats && (
+            <div className="grid grid-cols-2 gap-3 mt-2">
+              <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'var(--surface-hover)' }}>
+                <Users size={15} style={{ color: '#3b82f6' }} />
+                <div>
+                  <p className="text-lg font-bold" style={{ color: 'var(--text-main)' }}>{bubbleStats.clientes}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Clientes no Bubble</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'var(--surface-hover)' }}>
+                <Calendar size={15} style={{ color: 'var(--accent)' }} />
+                <div>
+                  <p className="text-lg font-bold" style={{ color: 'var(--text-main)' }}>{bubbleStats.agendamentos}</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Agendamentos</p>
+                </div>
+              </div>
             </div>
-            <button onClick={checkBubble} className="btn-secondary py-1 px-2 gap-1 text-xs">
-              <RefreshCw size={11} /> Testar
-            </button>
-          </div>
+          )}
         </div>
-        {bubbleStatus === 'online' && bubbleStats && (
-          <div className="grid grid-cols-2 gap-3 mt-2">
-            <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'var(--surface-hover)' }}>
-              <Users size={15} style={{ color: '#3b82f6' }} />
+
+        {/* OpenAI Status Card */}
+        <div className="card animate-fade-in" style={{
+          borderColor: openaiStatus === 'online' ? '#10b981' : openaiStatus === 'offline' ? '#ef4444' : 'var(--border)',
+        }}>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: '#7c3aed18', color: '#7c3aed' }}>
+                <Bot size={18} />
+              </div>
               <div>
-                <p className="text-lg font-bold" style={{ color: 'var(--text-main)' }}>{bubbleStats.clientes}</p>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Clientes no Bubble</p>
+                <p className="font-semibold text-sm" style={{ color: 'var(--text-main)' }}>OpenAI — James Engine</p>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>GPT-4o-mini + Whisper + TTS (via backend)</p>
               </div>
             </div>
-            <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'var(--surface-hover)' }}>
-              <Calendar size={15} style={{ color: 'var(--accent)' }} />
-              <div>
-                <p className="text-lg font-bold" style={{ color: 'var(--text-main)' }}>{bubbleStats.agendamentos}</p>
-                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Agendamentos</p>
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full" style={{
+                  background: openaiStatus === 'online' ? '#10b981' : openaiStatus === 'offline' ? '#ef4444' : '#f59e0b',
+                  boxShadow: openaiStatus === 'online' ? '0 0 6px #10b981' : 'none',
+                }} />
+                <span className="text-xs font-medium" style={{
+                  color: openaiStatus === 'online' ? '#10b981' : openaiStatus === 'offline' ? '#ef4444' : '#f59e0b',
+                }}>
+                  {openaiStatus === 'checking' ? 'Verificando...' : openaiStatus === 'online' ? 'Conectado' : 'Desconectado'}
+                </span>
               </div>
+              <button onClick={checkOpenAI} className="btn-secondary py-1 px-2 gap-1 text-xs">
+                <RefreshCw size={11} /> Testar
+              </button>
             </div>
           </div>
-        )}
+          {openaiStatus === 'online' && (
+            <div className="grid grid-cols-3 gap-3 mt-2">
+              <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'var(--surface-hover)' }}>
+                <span className="text-xs" style={{ color: '#7c3aed' }}>🧠</span>
+                <div>
+                  <p className="text-xs font-bold" style={{ color: 'var(--text-main)' }}>GPT-4o-mini</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Raciocínio</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'var(--surface-hover)' }}>
+                <span className="text-xs" style={{ color: '#7c3aed' }}>🎤</span>
+                <div>
+                  <p className="text-xs font-bold" style={{ color: 'var(--text-main)' }}>Whisper</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Transcrição</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 p-3 rounded-xl" style={{ background: 'var(--surface-hover)' }}>
+                <span className="text-xs" style={{ color: '#7c3aed' }}>🔊</span>
+                <div>
+                  <p className="text-xs font-bold" style={{ color: 'var(--text-main)' }}>TTS Onyx</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Voz James</p>
+                </div>
+              </div>
+            </div>
+          )}
+          {openaiStatus === 'offline' && (
+            <div className="mt-2 p-3 rounded-xl text-xs" style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.15)', color: '#ef4444' }}>
+              ⚠️ Backend offline ou chave OpenAI não configurada em <code style={{ background: 'rgba(239,68,68,0.1)', padding: '1px 4px', borderRadius: 4 }}>backend/.env</code>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* API Keys */}
@@ -159,7 +243,10 @@ export default function Integrations() {
                   </div>
                 </div>
                 <div className="w-2.5 h-2.5 rounded-full mt-1 flex-shrink-0"
-                  style={{ background: integ.apiKey ? '#10b981' : 'var(--border)' }} />
+                  style={{
+                    background: integ.apiKey ? '#10b981' : 'var(--border)',
+                    boxShadow: integ.apiKey ? '0 0 6px #10b981' : 'none',
+                  }} />
               </div>
               <div className="flex flex-col sm:flex-row gap-3">
                 <div className="flex-1">

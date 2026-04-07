@@ -11,7 +11,17 @@ import { logger } from './logger'
 
 const connection = new IORedis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
   maxRetriesPerRequest: null,
+  lazyConnect: true,
+  retryStrategy: (times) => {
+    if (times > 3) return null   // stop retrying after 3 attempts
+    return Math.min(times * 1000, 5000)
+  },
 }) as any // eslint-disable-line -- BullMQ bundles its own ioredis types
+
+// Prevent unhandled Redis errors from crashing the process
+connection.on('error', (err: Error) => {
+  logger.warn(`[Redis] Connection error (non-fatal): ${err.message}`)
+})
 
 export const router = Router()
 

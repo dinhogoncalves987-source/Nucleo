@@ -38,7 +38,14 @@ const ChipsMonitor = lazy(() => import('./pages/ChipsMonitor'))
 const QueueMonitor = lazy(() => import('./pages/QueueMonitor'))
 const JamesTraining = lazy(() => import('./pages/JamesTraining'))
 const ChipControl = lazy(() => import('./pages/ChipControl'))
-const JamesCommandCenter = lazy(() => import('./pages/JamesCommandCenter'))
+const JamesCommandCenter = lazy(() => import('./pages/JamesCommandCenter')) // legacy — kept for potential direct use
+const IntelOverview    = lazy(() => import('./pages/intel/IntelOverview'))
+const IntelChips       = lazy(() => import('./pages/intel/IntelChips'))
+const IntelChipDetail  = lazy(() => import('./pages/intel/IntelChipDetail'))
+const IntelChipMetric  = lazy(() => import('./pages/intel/IntelChipMetric'))
+const IntelAnalytics   = lazy(() => import('./pages/intel/IntelAnalytics'))
+const IntelMemory      = lazy(() => import('./pages/intel/IntelMemory'))
+const IntelInbox       = lazy(() => import('./pages/intel/IntelInbox'))
 
 function LoadingScreen() {
   return (
@@ -58,8 +65,9 @@ function LoadingScreen() {
 }
 
 function ProtectedRoute({ children, superAdminOnly = false }: { children: React.ReactNode; superAdminOnly?: boolean }) {
-  const { loading, user } = useTenant()
+  const { loading, user, isAuthenticated } = useTenant()
   if (loading) return <LoadingScreen />
+  if (!isAuthenticated || !user) return <Navigate to="/login" replace />
   if (superAdminOnly && user?.role !== 'superadmin') return <Navigate to="/dashboard" replace />
   return <>{children}</>
 }
@@ -91,7 +99,14 @@ function AppRoutes() {
         <Route path="/admin/queue" element={<ProtectedRoute superAdminOnly><QueueMonitor /></ProtectedRoute>} />
         <Route path="/james-training" element={<ProtectedRoute><JamesTraining /></ProtectedRoute>} />
         <Route path="/chip-control" element={<ProtectedRoute><ChipControl /></ProtectedRoute>} />
-        <Route path="/james-learning-command-center" element={<ProtectedRoute><JamesCommandCenter /></ProtectedRoute>} />
+        <Route path="/james-learning-command-center" element={<Navigate to="/intel" replace />} />
+        <Route path="/intel" element={<ProtectedRoute><IntelOverview /></ProtectedRoute>} />
+        <Route path="/intel/chips" element={<ProtectedRoute><IntelChips /></ProtectedRoute>} />
+        <Route path="/intel/chips/:id" element={<ProtectedRoute><IntelChipDetail /></ProtectedRoute>} />
+        <Route path="/intel/chips/:id/:metric" element={<ProtectedRoute><IntelChipMetric /></ProtectedRoute>} />
+        <Route path="/intel/analytics" element={<ProtectedRoute><IntelAnalytics /></ProtectedRoute>} />
+        <Route path="/intel/memory" element={<ProtectedRoute><IntelMemory /></ProtectedRoute>} />
+        <Route path="/intel/inbox" element={<ProtectedRoute><IntelInbox /></ProtectedRoute>} />
 
         <Route path="*" element={<Navigate to="/dashboard" replace />} />
       </Routes>

@@ -4,11 +4,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    headers: {
-      // Required for SharedArrayBuffer used by ONNX Runtime (Silero VAD)
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
+    host: true,
     proxy: {
       // Proxy para Bubble.io — resolve CORS em desenvolvimento
       '/bubble-api': {
@@ -21,9 +17,5 @@ export default defineConfig({
         },
       },
     },
-  },
-  optimizeDeps: {
-    include: ['@ricky0123/vad-web'],
-    exclude: ['onnxruntime-web'],
   },
 })

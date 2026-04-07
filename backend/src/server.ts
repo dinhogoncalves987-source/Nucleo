@@ -119,6 +119,11 @@ async function loadQueueServices() {
 }
 
 // ── Start ─────────────────────────────────────────────────────
+// Prevent unhandled rejections from crashing the process (Redis, BullMQ workers)
+process.on('unhandledRejection', (reason) => {
+  logger.warn(`[Process] Unhandled rejection (non-fatal): ${reason}`)
+})
+
 app.listen(PORT, async () => {
   logger.info(`🚀 O Núcleo backend rodando na porta ${PORT}`)
   logger.info(`🤖 James: POST /api/james/think | /transcribe | /tts`)

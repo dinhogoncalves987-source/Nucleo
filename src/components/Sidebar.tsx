@@ -13,7 +13,7 @@ const navItems = [
   { to: '/leads',                          icon: Users,           label: 'O Predador' },
   { to: '/james',                          icon: Bot,             label: 'James' },
   { to: '/james-training',                 icon: BrainCircuit,    label: 'James Training' },
-  { to: '/james-learning-command-center',  icon: FlaskConical,    label: 'James Intel' },
+  { to: '/intel',                          icon: FlaskConical,    label: 'James Intel' },
   { to: '/chip-control',                   icon: Radio,           label: 'Chip Control' },
   { to: '/activations',                    icon: Zap,             label: 'Viralizador' },
   { to: '/settings/integrations',          icon: Plug,            label: 'Conexões' },
@@ -175,6 +175,36 @@ export default function Sidebar() {
                 <>
                   <Network size={17} className="flex-shrink-0" style={{ color: isActive ? '#34d399' : 'var(--text-muted)' }} />
                   {!collapsed && <span className="truncate">Afiliados</span>}
+                </>
+              )}
+            </NavLink>
+            <NavLink
+              to="/admin/chips"
+              style={({ isActive }) => isActive
+                ? { background: 'rgba(0,180,255,0.10)', color: 'var(--accent)' }
+                : { color: 'var(--text-muted)' }
+              }
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
+            >
+              {({ isActive }) => (
+                <>
+                  <Radio size={17} className="flex-shrink-0" style={{ color: isActive ? 'var(--accent)' : 'var(--text-muted)' }} />
+                  {!collapsed && <span className="truncate">Chips Monitor</span>}
+                </>
+              )}
+            </NavLink>
+            <NavLink
+              to="/admin/queue"
+              style={({ isActive }) => isActive
+                ? { background: 'rgba(124,58,237,0.10)', color: '#a78bfa' }
+                : { color: 'var(--text-muted)' }
+              }
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
+            >
+              {({ isActive }) => (
+                <>
+                  <Cpu size={17} className="flex-shrink-0" style={{ color: isActive ? '#a78bfa' : 'var(--text-muted)' }} />
+                  {!collapsed && <span className="truncate">Queue Monitor</span>}
                 </>
               )}
             </NavLink>

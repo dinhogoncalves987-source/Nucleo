@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTenant } from '../contexts/TenantContext'
-import { JamesFace } from '../components/JamesFace'
+import JamesCoreWrapper from '../components/james-core/JamesCoreWrapper'
 // MicVAD replaced by native MediaRecorder VAD (no external deps)
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -184,384 +184,13 @@ function EnergyGrid({ active }: { active: boolean }) {
 }
 
 
-// ─── HibernationOverlay — Visual de nível investidor para estado dormindo ──
-function HibernationOverlay({ state, size }: { state: NucleoState; size: number }) {
-  const visible = state === 'nucleus' || state === 'closing'
-  const o = size
+// HibernationOverlay removed — the 3D nucleus handles all visual states
 
+// ─── Main Nucleus Component — FULL SCREEN background ──────────────────────
+function Nucleus({ state }: { state: NucleoState }) {
   return (
-    <div style={{
-      position: 'absolute', inset: 0, borderRadius: '50%',
-      overflow: 'hidden',
-      opacity: visible ? 1 : 0,
-      transition: 'opacity 0.6s ease',
-      pointerEvents: 'none',
-      zIndex: 10,
-    }}>
-      <style>{`
-        @keyframes hib-scan {
-          0%   { transform: translateY(-100%); opacity: 0 }
-          10%  { opacity: 0.6 }
-          90%  { opacity: 0.4 }
-          100% { transform: translateY(${o}px); opacity: 0 }
-        }
-        @keyframes hib-pulse {
-          0%,100% { opacity: 0.4; transform: scale(0.98) }
-          50%      { opacity: 0.9; transform: scale(1.02) }
-        }
-        @keyframes hib-text-glow {
-          0%,100% { text-shadow: 0 0 8px rgba(0,180,255,0.6), 0 0 20px rgba(0,180,255,0.3) }
-          50%      { text-shadow: 0 0 16px rgba(0,180,255,1), 0 0 40px rgba(0,180,255,0.6), 0 0 60px rgba(0,180,255,0.2) }
-        }
-        @keyframes hib-sub-blink {
-          0%,95%,100% { opacity: 0.5 }
-          97%          { opacity: 0 }
-        }
-        @keyframes hib-ring-rot {
-          from { transform: rotate(0deg) }
-          to   { transform: rotate(360deg) }
-        }
-        @keyframes hib-ring-rot-rev {
-          from { transform: rotate(0deg) }
-          to   { transform: rotate(-360deg) }
-        }
-        @keyframes hib-corner-blink {
-          0%,100% { opacity: 0.6 }
-          50%      { opacity: 0.2 }
-        }
-        @keyframes hib-data-scroll {
-          0%   { transform: translateY(0) }
-          100% { transform: translateY(-50%) }
-        }
-        @keyframes hib-badge-pulse {
-          0%,100% { box-shadow: 0 0 6px rgba(0,180,255,0.4) }
-          50%      { box-shadow: 0 0 14px rgba(0,180,255,0.9), 0 0 28px rgba(0,180,255,0.3) }
-        }
-      `}</style>
-
-      {/* Dark fog overlay — esconde o rosto */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        background: 'radial-gradient(circle at 50% 50%, rgba(1,8,20,0.88) 0%, rgba(2,5,12,0.96) 100%)',
-        borderRadius: '50%',
-      }}/>
-
-      {/* Circuit grid overlay */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        backgroundImage: `
-          linear-gradient(rgba(0,180,255,0.05) 1px, transparent 1px),
-          linear-gradient(90deg, rgba(0,180,255,0.05) 1px, transparent 1px)
-        `,
-        backgroundSize: `${o * 0.08}px ${o * 0.08}px`,
-        borderRadius: '50%',
-      }}/>
-
-      {/* Rotating HUD ring outer */}
-      <div style={{
-        position: 'absolute',
-        width: o * 0.92, height: o * 0.92,
-        left: '50%', top: '50%',
-        marginLeft: `-${o * 0.46}px`, marginTop: `-${o * 0.46}px`,
-        borderRadius: '50%',
-        border: '1px solid rgba(0,180,255,0.12)',
-        borderTop: '2px solid rgba(0,180,255,0.55)',
-        borderRight: '1px solid rgba(212,160,23,0.3)',
-        animation: 'hib-ring-rot 12s linear infinite',
-      }}>
-        {/* Tick marks */}
-        {[0,45,90,135,180,225,270,315].map(deg => (
-          <div key={deg} style={{
-            position: 'absolute',
-            width: deg % 90 === 0 ? 8 : 4,
-            height: deg % 90 === 0 ? 2 : 1,
-            background: deg % 90 === 0 ? 'rgba(0,180,255,0.8)' : 'rgba(0,180,255,0.3)',
-            top: '50%', left: '50%',
-            transformOrigin: `${-(o * 0.46)}px 0`,
-            transform: `rotate(${deg}deg) translateX(${-(o * 0.46)}px)`,
-          }}/>
-        ))}
-      </div>
-
-      {/* Rotating HUD ring inner */}
-      <div style={{
-        position: 'absolute',
-        width: o * 0.72, height: o * 0.72,
-        left: '50%', top: '50%',
-        marginLeft: `-${o * 0.36}px`, marginTop: `-${o * 0.36}px`,
-        borderRadius: '50%',
-        border: '1px solid rgba(0,180,255,0.08)',
-        borderBottom: '1.5px solid rgba(212,160,23,0.45)',
-        animation: 'hib-ring-rot-rev 18s linear infinite',
-      }}/>
-
-      {/* Scanline sweep */}
-      <div style={{
-        position: 'absolute',
-        left: 0, right: 0, height: 2,
-        background: 'linear-gradient(90deg, transparent, rgba(0,180,255,0.5) 30%, rgba(0,220,255,0.7) 50%, rgba(0,180,255,0.5) 70%, transparent)',
-        boxShadow: '0 0 12px rgba(0,180,255,0.4)',
-        animation: 'hib-scan 4s ease-in-out infinite',
-        animationDelay: '0.5s',
-      }}/>
-
-      {/* Corner brackets */}
-      {[
-        { top: '18%', left: '18%', bt: '2px solid', bl: '2px solid', br: 'none',   bb: 'none'   },
-        { top: '18%', right: '18%', bt: '2px solid', br: '2px solid', bl: 'none',  bb: 'none'   },
-        { bottom: '18%', left: '18%', bb: '2px solid', bl: '2px solid', bt: 'none',br: 'none'   },
-        { bottom: '18%', right: '18%', bb: '2px solid', br: '2px solid', bt: 'none',bl: 'none'  },
-      ].map((c, i) => (
-        <div key={i} style={{
-          position: 'absolute',
-          width: o * 0.1, height: o * 0.1,
-          ...c,
-          borderColor: 'rgba(0,180,255,0.5)',
-          animation: 'hib-corner-blink 2s ease-in-out infinite',
-          animationDelay: `${i * 0.3}s`,
-        }}/>
-      ))}
-
-      {/* Center content */}
-      <div style={{
-        position: 'absolute', inset: 0,
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        gap: o * 0.028,
-      }}>
-        {/* Status badge */}
-        <div style={{
-          fontSize: o * 0.052,
-          fontFamily: "'Inter', monospace",
-          fontWeight: 400,
-          letterSpacing: '0.3em',
-          color: 'rgba(0,180,255,0.5)',
-          textTransform: 'uppercase',
-        }}>
-          SISTEMA
-        </div>
-
-        {/* Main title */}
-        <div style={{
-          fontFamily: "'Inter', system-ui, sans-serif",
-          fontWeight: 900,
-          fontSize: o * 0.155,
-          letterSpacing: '0.12em',
-          color: '#00B4FF',
-          animation: 'hib-text-glow 3s ease-in-out infinite',
-          lineHeight: 1,
-          textTransform: 'uppercase',
-        }}>
-          O NÚCLEO
-        </div>
-
-        {/* Divider line */}
-        <div style={{
-          width: o * 0.45, height: 1,
-          background: 'linear-gradient(90deg, transparent, rgba(0,180,255,0.7), rgba(212,160,23,0.4), transparent)',
-          boxShadow: '0 0 6px rgba(0,180,255,0.4)',
-        }}/>
-
-        {/* Subtitle with blinking cursor */}
-        <div style={{
-          fontSize: o * 0.048,
-          fontFamily: 'monospace',
-          letterSpacing: '0.22em',
-          color: 'rgba(0,180,255,0.55)',
-          animation: 'hib-sub-blink 3s ease-in-out infinite',
-        }}>
-          HIBERNANDO
-        </div>
-
-        {/* Data readout */}
-        <div style={{
-          fontSize: o * 0.038,
-          fontFamily: 'monospace',
-          color: 'rgba(0,180,255,0.25)',
-          letterSpacing: '0.1em',
-          marginTop: o * 0.02,
-        }}>
-          J-AI · v3.0 · ONLINE
-        </div>
-      </div>
-
-      {/* Bottom badge */}
-      <div style={{
-        position: 'absolute',
-        bottom: '14%',
-        left: '50%', transform: 'translateX(-50%)',
-        padding: `${o * 0.018}px ${o * 0.06}px`,
-        border: '1px solid rgba(0,180,255,0.3)',
-        borderRadius: 2,
-        fontSize: o * 0.042,
-        fontFamily: 'monospace',
-        letterSpacing: '0.15em',
-        color: 'rgba(0,180,255,0.5)',
-        animation: 'hib-badge-pulse 2.5s ease-in-out infinite',
-        whiteSpace: 'nowrap',
-      }}>
-        ◆ STANDBY ◆
-      </div>
-    </div>
-  )
-}
-
-// ─── Main Nucleus Component ────────────────────────────────────────────────
-function Nucleus({ state, orbSize }: { state: NucleoState; orbSize: number }) {
-  const isNucleus    = state === 'nucleus'
-  const isOpening    = state === 'opening'
-  const isClosing    = state === 'closing'
-  const isListening  = state === 'listening'
-  const isSpeaking   = state === 'speaking'
-  const isThinking   = state === 'thinking'
-  const isWaiting    = state === 'waiting'
-  const isActive     = ['active','listening','waiting','speaking','thinking'].includes(state)
-
-  const s1 = isOpening ? '0.6s' : isSpeaking ? '1.2s' : isListening ? '2s' : isActive ? '4s' : '8s'
-  const s2 = isOpening ? '0.9s' : isSpeaking ? '1.8s' : isListening ? '3s' : isActive ? '6s' : '12s'
-  const s3 = isOpening ? '1.2s' : isSpeaking ? '2.4s' : isListening ? '4s' : isActive ? '8s' : '16s'
-
-  const ringBlue  = isListening ? 'rgba(74,222,128,0.75)'
-                  : isWaiting   ? 'rgba(245,158,11,0.75)'
-                  : isActive    ? 'rgba(0,180,255,0.7)'
-                  : 'rgba(0,180,255,0.45)'
-  const ringGold  = isListening ? 'rgba(74,222,128,0.3)' : 'rgba(212,160,23,0.5)'
-  const glowColor = isListening ? 'rgba(74,222,128,0.45)'
-                  : isWaiting   ? 'rgba(245,158,11,0.35)'
-                  : isSpeaking  ? 'rgba(0,180,255,0.7)'
-                  : isThinking  ? 'rgba(160,100,255,0.5)'
-                  : isActive    ? 'rgba(0,180,255,0.3)'
-                  : 'rgba(0,120,200,0.2)'
-  const o = orbSize
-
-  return (
-    <div style={{
-      position: 'relative',
-      width: o + o * 0.5, height: o + o * 0.5,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}>
-      <style>{`
-        @keyframes r1{from{transform:rotateX(75deg) rotateZ(0)}to{transform:rotateX(75deg) rotateZ(360deg)}}
-        @keyframes r2{from{transform:rotateY(65deg) rotateZ(0)}to{transform:rotateY(65deg) rotateZ(-360deg)}}
-        @keyframes r3{from{transform:rotateX(25deg) rotateY(40deg) rotateZ(0)}to{transform:rotateX(25deg) rotateY(40deg) rotateZ(360deg)}}
-        @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(calc(-1 * ${o * 0.035}px))}}
-        @keyframes glow-pulse{0%,100%{opacity:0.7;transform:scale(1)}50%{opacity:1;transform:scale(1.1)}}
-        @keyframes eye-glow{0%,100%{filter:brightness(1)}50%{filter:brightness(2) saturate(1.5)}}
-        @keyframes burst{0%{transform:scale(0.8);opacity:0}30%{transform:scale(1.3);opacity:1}60%{transform:scale(1.1);opacity:1}100%{transform:scale(1);opacity:1}}
-        @keyframes iris-open{0%{clip-path:circle(0% at 50% 50%)}100%{clip-path:circle(55% at 50% 50%)}}
-        @keyframes iris-close{0%{clip-path:circle(55% at 50% 50%)}100%{clip-path:circle(0% at 50% 50%)}}
-        @keyframes think-pulse{0%,100%{opacity:0.3;transform:scale(0.97)}50%{opacity:0.85;transform:scale(1.03)}}
-        @keyframes wait-pulse{0%,100%{opacity:0.2;transform:scale(0.98)}50%{opacity:0.6;transform:scale(1.02)}}
-      `}</style>
-
-      {/* Ambient glow */}
-      <div style={{
-        position: 'absolute', width: o + o * 0.38, height: o + o * 0.38,
-        borderRadius: '50%',
-        background: `radial-gradient(circle,${glowColor} 0%,transparent 70%)`,
-        filter: `blur(${o * 0.1}px)`,
-        transition: 'all 1.2s ease',
-        animation: 'glow-pulse 2.5s ease-in-out infinite',
-      }}/>
-
-      {/* Ring 1 */}
-      <div style={{
-        position:'absolute', width: o+o*0.46, height: o+o*0.46, borderRadius:'50%',
-        border:`${Math.max(2, o*0.007)}px solid ${ringBlue}`,
-        borderTop:`${Math.max(2, o*0.007)}px solid ${ringGold}`,
-        boxShadow:`0 0 ${o*0.05}px ${ringBlue},inset 0 0 ${o*0.05}px ${ringBlue}`,
-        animation:`r1 ${s1} linear infinite`,
-        transition:'border-color 0.7s,box-shadow 0.7s',
-      }}/>
-      {/* Ring 2 */}
-      <div style={{
-        position:'absolute', width: o+o*0.34, height: o+o*0.34, borderRadius:'50%',
-        border:`${Math.max(1.5, o*0.006)}px solid ${ringGold}`,
-        borderRight:`${Math.max(1.5, o*0.006)}px solid ${ringBlue}`,
-        boxShadow:`0 0 ${o*0.03}px ${ringGold}`,
-        animation:`r2 ${s2} linear infinite`,
-        transition:'border-color 0.7s',
-      }}/>
-      {/* Ring 3 */}
-      <div style={{
-        position:'absolute', width: o+o*0.23, height: o+o*0.23, borderRadius:'50%',
-        border:`${Math.max(1, o*0.005)}px solid rgba(255,255,255,0.08)`,
-        borderBottom:`${Math.max(1, o*0.005)}px solid ${ringBlue}`,
-        animation:`r3 ${s3} linear infinite`,
-        transition:'border-color 0.7s',
-      }}/>
-
-      {/* Core sphere */}
-      <div style={{
-        width: o, height: o, borderRadius:'50%',
-        position:'relative', flexShrink:0,
-        animation: isActive ? `float ${4}s ease-in-out infinite` : 'none',
-      }}>
-        <div style={{
-          width:'100%', height:'100%', borderRadius:'50%',
-          background: isActive
-            ? 'radial-gradient(circle at 40% 35%, #0A1E35, #030C18)'
-            : 'radial-gradient(circle at 40% 35%, #050D18, #020508)',
-          border:`${Math.max(2, o*0.008)}px solid ${ringBlue}`,
-          boxShadow: isSpeaking
-            ? `0 0 ${o*0.18}px ${glowColor},0 0 ${o*0.35}px rgba(0,180,255,0.18)`
-            : `0 0 ${o*0.07}px ${glowColor}`,
-          transition:'all 1s ease',
-          position:'relative', overflow:'hidden',
-        }}>
-          <div style={{
-            position:'absolute', inset:0, borderRadius:'50%',
-            background:'radial-gradient(circle at 30% 25%, rgba(0,180,255,0.08) 0%, rgba(0,0,0,0.6) 100%)',
-          }}/>
-
-          {/* James face — sempre visível, escurece no estado nucleus */}
-          <div style={{
-            position:'absolute', inset:0,
-            display:'flex', alignItems:'center', justifyContent:'center',
-            animation: isOpening ? 'iris-open 0.9s ease-out forwards'
-                      : isClosing ? 'iris-close 0.6s ease-in forwards'
-                      : undefined,
-            clipPath: !isNucleus && !isOpening && !isClosing ? 'circle(55% at 50% 50%)' : undefined,
-            opacity: 1,
-            transform:
-              state === 'speaking'
-                ? `translateY(-${o * 0.032}px) scale(1.08)`
-                : isOpening || state === 'active' || state === 'listening' || state === 'thinking' || state === 'waiting'
-                  ? 'translateY(0) scale(1.02)'
-                  : `translateY(${o * 0.012}px) scale(0.92)`,
-            transformOrigin: '50% 72%',
-            transition: 'opacity 0.3s ease, transform 0.45s ease',
-          }}>
-            <JamesFace state={state} size={Math.round(o * 0.88)} />
-          </div>
-
-          {/* Hibernation overlay — cobre o rosto com HUD O NÚCLEO */}
-          <HibernationOverlay state={state} size={o} />
-
-          {isOpening && (
-            <div style={{
-              position:'absolute', inset:0, borderRadius:'50%',
-              background:'radial-gradient(circle,rgba(0,180,255,0.25) 0%,transparent 70%)',
-              animation:'burst 1s ease-out forwards',
-            }}/>
-          )}
-
-          {isThinking && (
-            <div style={{
-              position:'absolute', inset:0, borderRadius:'50%',
-              background:'radial-gradient(circle at 50% 40%, rgba(160,100,255,0.25) 0%, transparent 70%)',
-              animation:'think-pulse 1.2s ease-in-out infinite',
-            }}/>
-          )}
-          {isWaiting && (
-            <div style={{
-              position:'absolute', inset:0, borderRadius:'50%',
-              background:'radial-gradient(circle at 50% 40%, rgba(245,158,11,0.2) 0%, transparent 70%)',
-              animation:'wait-pulse 1.8s ease-in-out infinite',
-            }}/>
-          )}
-        </div>
-      </div>
+    <div style={{ position: 'absolute', inset: 0, zIndex: 0 }}>
+      <JamesCoreWrapper nucleoState={state} />
     </div>
   )
 }
@@ -603,7 +232,6 @@ export default function James() {
   const { tenant } = useTenant()
   const tenantId  = tenant?.id ?? 'personal'
   const [state, setState] = useState<NucleoState>('nucleus')
-  const [orbSize, setOrbSize] = useState(320)
 
   const stateRef   = useRef<NucleoState>('nucleus')
   stateRef.current = state
@@ -619,13 +247,6 @@ export default function James() {
   const watchdogRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingCtxRef = useRef<string>('')
 
-  // ── Orb size ────────────────────────────────────────────────────────────────
-  useEffect(() => {
-    const calc = () => setOrbSize(Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.52))
-    calc()
-    window.addEventListener('resize', calc)
-    return () => window.removeEventListener('resize', calc)
-  }, [])
 
   // ── TTS via backend — sem chave no frontend ──────────────────────────────────
   // Chama /api/james/tts. Funciona sem OPENAI_API_KEY no browser.
@@ -694,35 +315,63 @@ export default function James() {
     resetWatchdog()
 
     try {
-      if (audioBlob.size < 1000) return  // too short
+      if (audioBlob.size < 1000) { busyRef.current = false; return }  // too short — reset busy!
 
       const rawText = await transcribeBackend(audioBlob)
       if (!rawText || rawText.length < 2) return
 
       const t = rawText.toLowerCase().replace(/[.,!?;:]/g, '').trim()
 
-      // Dismiss
+      // ═══ COMANDO 1: FINALIZAR — "Obrigado James" fecha o Núcleo ═══════════
       const isDismiss =
         t.includes('obrigado james') || t.includes('tchau james') ||
-        t.includes('sair james')     || t.includes('dispensar')   ||
-        t.includes('pode ir')        || (t.startsWith('obrigado') && t.length < 30)
+        t.includes('até mais james') || t.includes('ate mais james') ||
+        t.includes('sair james')     || t.includes('dispensar james')
       if (isDismiss) {
         pendingCtxRef.current = ''
+        busyRef.current = false
+        clearWatchdog()
         audioRef.current?.pause()
-        // Limpa histórico da sessão no backend
-        resetSession(sessionIdRef.current).catch(() => {})
-        setState('closing')
-        setTimeout(() => setState('nucleus'), 700)
+        vadRef.current?.pause()
+        // Fala de despedida antes de fechar
+        speak('Até mais, Comandante. Estarei aqui quando precisar.')
+          .catch(() => {})
+          .finally(() => {
+            resetSession(sessionIdRef.current).catch(() => {})
+            setState('closing')
+            setTimeout(() => setState('nucleus'), 700)
+          })
         return
       }
 
-      // "ok" = accumulate context
-      const isOk = t === 'ok' || t.endsWith(' ok') || (t.startsWith('ok ') && t.length < 10)
-      if (isOk) {
-        const beforeOk = rawText.replace(/\bok\b/gi, '').trim()
-        if (beforeOk.length > 1) pendingCtxRef.current += (pendingCtxRef.current ? '\n' : '') + beforeOk
-        setState('waiting')
-        vadRef.current?.start()
+      // ═══ COMANDO 2: TRAVAR — "Ok James" para de falar e escuta ═══════════
+      const isPause =
+        t === 'ok james' || t === 'okay james' || t === 'okey james' ||
+        t === 'ok' || t === 'okay' ||
+        t.startsWith('ok james') || t.startsWith('okay james')
+      if (isPause) {
+        audioRef.current?.pause()       // para o áudio atual
+        audioRef.current = null
+        pendingCtxRef.current = ''      // limpa contexto pendente
+        busyRef.current = false
+        clearWatchdog()
+        setState('active')              // volta ao estado ativo (pronto para ouvir)
+        vadRef.current?.start()         // retoma o VAD
+        return
+      }
+
+      // ═══ COMANDO 3: INICIAR (quando já ativo, re-saudação) ═══════════════
+      const isGreeting =
+        t.includes('olá james') || t.includes('ola james') ||
+        t.includes('bom dia james') || t.includes('boa tarde james') ||
+        t.includes('boa noite james') || t.includes('hey james') ||
+        t.includes('ei james') || t.includes('eai james') ||
+        t.includes('e aí james') || t.includes('e ai james')
+      if (isGreeting && stateRef.current !== 'nucleus') {
+        // James já está ativo mas recebeu uma saudação — responde e fica pronto
+        const hour = new Date().getHours()
+        const period = hour < 12 ? 'bom dia' : hour < 18 ? 'boa tarde' : 'boa noite'
+        speak(`${period.charAt(0).toUpperCase() + period.slice(1)}, Comandante! Estou pronto. O que precisa?`).catch(() => {})
         return
       }
 
@@ -800,7 +449,7 @@ export default function James() {
         vadRef.current?.start()
       }
     }
-  }, [resetWatchdog, clearWatchdog, tenantId])
+  }, [resetWatchdog, clearWatchdog, tenantId, speak])
 
 
   // ── Native VAD (MediaRecorder + Web Audio AnalyserNode) ─────────────────
@@ -825,6 +474,7 @@ export default function James() {
       let recorder: MediaRecorder | null = null
       let chunks: Blob[]                 = []
       let speaking                       = false
+      let paused                         = false   // ← NEW: tracks if VAD is paused
       let silenceTimer: ReturnType<typeof setTimeout> | null = null
       let rafId: number
 
@@ -855,8 +505,14 @@ export default function James() {
         analyser.getByteTimeDomainData(dataArr)
         const rms = Math.sqrt(dataArr.reduce((s, v) => s + (v - 128) ** 2, 0) / dataArr.length)
 
+        // Skip detection when paused or busy
+        if (paused || busyRef.current) {
+          rafId = requestAnimationFrame(tick)
+          return
+        }
+
         if (rms > SPEECH_THRESHOLD) {
-          if (!speaking && !busyRef.current) {
+          if (!speaking) {
             speaking = true
             if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null }
             startRecording()
@@ -878,8 +534,23 @@ export default function James() {
       rafId = requestAnimationFrame(tick)
 
       vadRef.current = {
-        pause:   () => { speaking = false; if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null } },
-        start:   () => { /* RAF already running */ },
+        pause: () => {
+          paused = true
+          speaking = false
+          if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null }
+          // Stop any active recording without triggering onSpeechEnd
+          if (recorder?.state === 'recording') {
+            recorder.ondataavailable = null
+            recorder.onstop = null
+            try { recorder.stop() } catch {}
+          }
+        },
+        start: () => {
+          paused = false
+          speaking = false
+          busyRef.current = false
+          // RAF already running — just un-pause
+        },
         destroy: () => {
           cancelAnimationFrame(rafId)
           if (silenceTimer) clearTimeout(silenceTimer)
@@ -911,11 +582,27 @@ export default function James() {
   }, [state, initVAD, destroyVAD])
 
   // ── Summon & dismiss ────────────────────────────────────────────────────
-  const summon = useCallback(() => {
+  const summon = useCallback((greeting?: string) => {
     if (stateRef.current !== 'nucleus') return
     setState('opening')
-    setTimeout(() => setState('active'), 750)
-  }, [])
+    setTimeout(() => {
+      setState('active')
+      // James responde com a saudação apropriada
+      if (greeting) {
+        const hour = new Date().getHours()
+        const period = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'
+        const responses: Record<string, string> = {
+          'ola':       `${period}, Comandante! James ativo. Como posso ajudar?`,
+          'bom dia':   `Bom dia, Comandante! Pronto para o trabalho.`,
+          'boa tarde': `Boa tarde, Comandante! Estou à disposição.`,
+          'boa noite': `Boa noite, Comandante! No que posso ser útil?`,
+          'default':   `${period}, Comandante! James online. O que precisa?`,
+        }
+        const reply = responses[greeting] ?? responses['default']
+        speak(reply).catch(() => {})
+      }
+    }, 750)
+  }, [speak])
 
   const dismiss = useCallback(() => {
     audioRef.current?.pause()
@@ -927,6 +614,7 @@ export default function James() {
   }, [destroyVAD])
 
   // ── Wake word listener (Web Speech API — nucleus only) ──────────────────
+  // Detecta saudações como "Olá James", "Bom dia James", etc.
   useEffect(() => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition
     if (!SR) return
@@ -943,7 +631,20 @@ export default function James() {
         rec.onresult = (e: any) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const heard = Array.from(e.results as any[]).map((r: any) => r[0].transcript.toLowerCase()).join(' ')
-          if (heard.includes('james') || heard.includes('núcleo') || heard.includes('nucleo')) summon()
+          const h = heard.replace(/[.,!?;:]/g, '').trim()
+
+          // Detecta qual tipo de saudação pra James responder adequadamente
+          if (h.includes('bom dia') && (h.includes('james') || h.includes('núcleo') || h.includes('nucleo'))) {
+            summon('bom dia')
+          } else if (h.includes('boa tarde') && (h.includes('james') || h.includes('núcleo') || h.includes('nucleo'))) {
+            summon('boa tarde')
+          } else if (h.includes('boa noite') && (h.includes('james') || h.includes('núcleo') || h.includes('nucleo'))) {
+            summon('boa noite')
+          } else if ((h.includes('olá') || h.includes('ola') || h.includes('hey') || h.includes('ei') || h.includes('eai') || h.includes('e aí') || h.includes('e ai')) && (h.includes('james') || h.includes('núcleo') || h.includes('nucleo'))) {
+            summon('ola')
+          } else if (h.includes('james') || h.includes('núcleo') || h.includes('nucleo')) {
+            summon('default')
+          }
         }
         rec.onend  = () => { if (alive) setTimeout(loop, 400) }
         rec.onerror = () => { if (alive) setTimeout(loop, 1200) }
@@ -963,57 +664,57 @@ export default function James() {
     }
   }, [destroyVAD])
 
-  // ── Orb click: nucleus ignora clique — só voz acorda James ───────────────
+  // ── Orb click ───────────────────────────────────────────────────────────
   const handleOrbClick = useCallback(() => {
     const s = stateRef.current
-    if (s === 'nucleus')  return                                            // voz apenas
+    if (s === 'nucleus')  { summon('default'); return }                      // clique acorda James com saudação
+    if (s === 'opening')  return
     if (s === 'speaking') { audioRef.current?.pause(); setState('active');  return }
     if (s === 'active' || s === 'waiting') { dismiss();                     return }
-  }, [dismiss])
+  }, [dismiss, summon])
 
   // ── UI helpers ──────────────────────────────────────────────────────────
-  const bg =
-    state === 'listening' ? 'radial-gradient(ellipse at 50% 40%, #001508 0%, #020508 100%)' :
-    state === 'waiting'   ? 'radial-gradient(ellipse at 50% 40%, #1a0e00 0%, #020508 100%)' :
-    state === 'speaking'  ? 'radial-gradient(ellipse at 50% 40%, #001828 0%, #020508 100%)' :
-    state === 'thinking'  ? 'radial-gradient(ellipse at 50% 40%, #0a0018 0%, #020508 100%)' :
-    '#020508'
 
   const isPresent = ['opening','active','listening','waiting','speaking','thinking'].includes(state)
 
   const hint =
-    state === 'nucleus'   ? 'Diga "James" para ativar' :
-    state === 'active'    ? 'Ouço você — pode falar' :
-    state === 'listening' ? 'Ouvindo…' :
-    state === 'waiting'   ? 'Aguardo você concluir…' :
-    state === 'thinking'  ? 'Processando…' :
-    state === 'speaking'  ? 'Pode falar — paro imediatamente' : ''
+    state === 'nucleus'   ? 'Diga "Olá James" · "Bom dia" · "Boa tarde" · "Boa noite James"' :
+    state === 'active'    ? 'Ouço você — fale · "Ok James" = pausa · "Obrigado James" = sair' :
+    state === 'listening' ? '🎤 Ouvindo…' :
+    state === 'waiting'   ? 'Aguardo… · "Ok James" = pausa' :
+    state === 'thinking'  ? '🧠 Processando…' :
+    state === 'speaking'  ? '🔊 Falando… · "Ok James" = para imediatamente' : ''
 
   return (
     <div style={{
-      width: '100vw', height: '100vh', background: bg,
-      transition: 'background 1.2s ease', overflow: 'hidden', position: 'relative',
-      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+      width: '100vw', height: '100vh',
+      overflow: 'hidden', position: 'relative',
       userSelect: 'none',
+      background: '#030308',
     }}>
-      <EnergyGrid active={isPresent} />
+      {/* 3D Nucleus — full screen background */}
+      <Nucleus state={state} />
 
+      {/* Clickable overlay */}
       <div
         onClick={handleOrbClick}
-        style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1, cursor: 'pointer', width: '100%' }}
-      >
-        <Nucleus state={state} orbSize={orbSize} />
-      </div>
+        style={{
+          position: 'absolute', inset: 0, zIndex: 2,
+          cursor: 'pointer',
+        }}
+      />
 
-      <div style={{ position: 'absolute', bottom: 'clamp(80px,10vh,120px)', left: '50%', transform: 'translateX(-50%)' }}>
+      {/* Sound bars */}
+      <div style={{ position: 'absolute', bottom: 'clamp(80px,10vh,120px)', left: '50%', transform: 'translateX(-50%)', zIndex: 5 }}>
         <SoundBars state={state} />
       </div>
 
+      {/* Hint text */}
       {hint && (
         <div style={{
           position: 'absolute', bottom: 'clamp(40px,5vh,60px)', left: '50%', transform: 'translateX(-50%)',
           color: state === 'waiting' ? 'rgba(245,158,11,0.65)' : 'rgba(100,160,220,0.55)',
-          fontSize: 12,
+          fontSize: 12, zIndex: 5,
           letterSpacing: '0.08em', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap',
           transition: 'color 0.5s ease',
         }}>
@@ -1021,6 +722,7 @@ export default function James() {
         </div>
       )}
 
+      {/* Status dot */}
       <div style={{
         position: 'absolute', top: 20, left: '50%', transform: 'translateX(-50%)',
         width: 5, height: 5, borderRadius: '50%',
@@ -1035,6 +737,7 @@ export default function James() {
         transition: 'all 0.5s ease', zIndex: 10,
       }} />
 
+      {/* Back button */}
       <button
         onClick={() => { dismiss(); navigate('/dashboard') }}
         style={{

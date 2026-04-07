@@ -1,5 +1,6 @@
 import { ReactNode } from 'react'
 import Sidebar from './Sidebar'
+import GlobalJames from './GlobalJames'
 import { Bell } from 'lucide-react'
 import { useTenant } from '../contexts/TenantContext'
 
@@ -76,6 +77,7 @@ export default function AppLayout({ children, title, subtitle }: Props) {
           {children}
         </main>
       </div>
+      <GlobalJames />
     </div>
   )
 }

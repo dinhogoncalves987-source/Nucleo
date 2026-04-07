@@ -155,6 +155,27 @@ export async function saveMemory(
   } catch { /* non-blocking */ }
 }
 
+// ─── Contexto de treinamento permanente (training wizard) ────────────────────
+// Sempre carrega as memórias de training como contexto fixo do James.
+// Isso garante que James SEMPRE tenha o conhecimento do negócio em mente.
+export async function fetchTrainingContext(tenantId: string): Promise<string> {
+  try {
+    const { data } = await supabase
+      .from('james_memories')
+      .select('input, response, category')
+      .eq('tenant_id', tenantId)
+      .like('category', 'training:%')
+      .neq('category', 'training:wizard-state')
+      .order('category', { ascending: true })
+      .limit(20)
+
+    if (!data?.length) return ''
+
+    const lines = data.map(m => `• ${m.response}`)
+    return `\nCONHECIMENTO DO NEGÓCIO (treinamento):\n${lines.join('\n')}`
+  } catch { return '' }
+}
+
 // ─── Contexto ao vivo ─────────────────────────────────────────────────────────
 export function getLiveContext(): string {
   const now     = new Date()
@@ -235,7 +256,7 @@ export async function buildMessages(req: JamesRequest): Promise<{ role: 'system'
   const { message, tenant_id, origin } = req
   const sessionId = req.sessionId ?? tenant_id
 
-  const [memoryCtx, searchCtx, tenantCtx] = await Promise.all([
+  const [memoryCtx, searchCtx, tenantCtx, trainingCtx] = await Promise.all([
     getSession(sessionId).turns.length < 4
       ? searchMemory(message, tenant_id)
       : Promise.resolve(''),
@@ -243,13 +264,15 @@ export async function buildMessages(req: JamesRequest): Promise<{ role: 'system'
     origin === 'frontend' || origin === 'personal'
       ? fetchTenantData(tenant_id)
       : Promise.resolve(''),
+    fetchTrainingContext(tenant_id),
   ])
 
   let systemContent = JAMES_SYSTEM
   systemContent += '\n' + getLiveContext()
-  if (tenantCtx)  systemContent += '\n' + tenantCtx
-  if (searchCtx)  systemContent += searchCtx
-  if (memoryCtx)  systemContent += memoryCtx
+  if (tenantCtx)   systemContent += '\n' + tenantCtx
+  if (trainingCtx) systemContent += trainingCtx
+  if (searchCtx)   systemContent += searchCtx
+  if (memoryCtx)   systemContent += memoryCtx
 
   if (origin === 'whatsapp' && req.clientName) {
     systemContent += `\nCANAL WhatsApp: atendendo ${req.clientName}.`
