@@ -46,7 +46,7 @@ interface OpLog {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:3001'
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? ''
 const API_SECRET  = import.meta.env.VITE_API_SECRET  ?? ''
 
 const PAGE_LABELS: Record<JamesContext['page'], string> = {

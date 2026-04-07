@@ -3,7 +3,7 @@
  * As chamadas sensiveis passam pelo backend para evitar uso direto de API key no navegador.
  */
 
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined) || 'http://localhost:3001'
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined) || ''
 const API_SECRET  = (import.meta.env.VITE_API_SECRET  as string | undefined) || ''
 
 async function postToBackend<T>(path: string, body: object): Promise<T> {

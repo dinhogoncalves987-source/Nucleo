@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { RefreshCw, Clock, CheckCircle2, XCircle, AlertTriangle, Layers, Activity } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:3001'
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? ''
 const API_SECRET  = import.meta.env.VITE_API_SECRET  ?? ''
 
 interface QueueStats {

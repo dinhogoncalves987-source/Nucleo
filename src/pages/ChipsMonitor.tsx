@@ -6,7 +6,7 @@ import {
 import AppLayout from '../components/AppLayout'
 
 // URL do backend VPS (configurada em .env.local como VITE_BACKEND_URL)
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? 'http://localhost:3001'
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? ''
 const API_SECRET  = import.meta.env.VITE_API_SECRET  ?? ''
 
 interface Chip {

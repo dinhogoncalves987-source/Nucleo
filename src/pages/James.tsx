@@ -31,7 +31,7 @@ type ISpeechRecognition = {
   start(): void; stop(): void
 }
 
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined) || 'http://localhost:3001'
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined) || ''
 const API_SECRET  = (import.meta.env.VITE_API_SECRET  as string | undefined) || ''
 
 // ─── Backend helpers (todo o cérebro vive no backend) ──────────────────────
@@ -714,8 +714,9 @@ export default function James() {
         <div style={{
           position: 'absolute', bottom: 'clamp(40px,5vh,60px)', left: '50%', transform: 'translateX(-50%)',
           color: state === 'waiting' ? 'rgba(245,158,11,0.65)' : 'rgba(100,160,220,0.55)',
-          fontSize: 12, zIndex: 5,
-          letterSpacing: '0.08em', fontFamily: 'Inter, sans-serif', whiteSpace: 'nowrap',
+          fontSize: 'clamp(10px, 2.5vw, 12px)', zIndex: 5,
+          letterSpacing: '0.08em', fontFamily: 'Inter, sans-serif',
+          textAlign: 'center', maxWidth: '90vw',
           transition: 'color 0.5s ease',
         }}>
           {hint}

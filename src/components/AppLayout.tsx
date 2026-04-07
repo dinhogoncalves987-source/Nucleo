@@ -1,5 +1,5 @@
 import { ReactNode } from 'react'
-import Sidebar from './Sidebar'
+import Sidebar, { MobileMenuButton } from './Sidebar'
 import GlobalJames from './GlobalJames'
 import { Bell } from 'lucide-react'
 import { useTenant } from '../contexts/TenantContext'
@@ -18,29 +18,33 @@ export default function AppLayout({ children, title, subtitle }: Props) {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Top bar */}
         <header
-          className="flex items-center justify-between px-6 py-3.5 flex-shrink-0"
+          className="flex items-center justify-between px-4 md:px-6 py-3.5 flex-shrink-0"
           style={{
             background: 'var(--surface-card)',
             borderBottom: '1px solid var(--border)',
             boxShadow: '0 1px 4px rgba(0,0,0,0.3)',
           }}
         >
-          <div>
-            <h1
-              className="text-xl font-bold tracking-tight"
-              style={{
-                fontFamily: "'Inter', system-ui, sans-serif",
-                color: 'var(--text-main)',
-                lineHeight: 1.2,
-              }}
-            >
-              {title}
-            </h1>
-            {subtitle && (
-              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{subtitle}</p>
-            )}
-          </div>
           <div className="flex items-center gap-3">
+            {/* Hamburger mobile */}
+            <MobileMenuButton onClick={() => (Sidebar as any).__toggleMobile?.()} />
+            <div>
+              <h1
+                className="text-lg md:text-xl font-bold tracking-tight"
+                style={{
+                  fontFamily: "'Inter', system-ui, sans-serif",
+                  color: 'var(--text-main)',
+                  lineHeight: 1.2,
+                }}
+              >
+                {title}
+              </h1>
+              {subtitle && (
+                <p className="text-xs mt-0.5 hidden sm:block" style={{ color: 'var(--text-muted)' }}>{subtitle}</p>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 md:gap-3">
             <button
               className="w-8 h-8 flex items-center justify-center rounded-xl transition-colors"
               style={{
@@ -51,7 +55,7 @@ export default function AppLayout({ children, title, subtitle }: Props) {
             >
               <Bell size={15} />
             </button>
-            <div className="h-6 w-px" style={{ background: 'var(--border)' }} />
+            <div className="h-6 w-px hidden sm:block" style={{ background: 'var(--border)' }} />
             {/* Avatar with gradient */}
             <div className="flex items-center gap-2">
               <div
@@ -71,7 +75,7 @@ export default function AppLayout({ children, title, subtitle }: Props) {
 
         {/* Page content */}
         <main
-          className="flex-1 overflow-y-auto p-6 animate-fade-in bg-grid"
+          className="flex-1 overflow-y-auto p-4 md:p-6 animate-fade-in bg-grid"
           style={{ background: 'var(--surface-main)' }}
         >
           {children}
@@ -81,3 +85,4 @@ export default function AppLayout({ children, title, subtitle }: Props) {
     </div>
   )
 }
+

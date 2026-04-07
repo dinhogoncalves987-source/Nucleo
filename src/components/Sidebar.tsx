@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { NavLink, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useCallback } from 'react'
+import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Bot, Zap, Plug, ShieldCheck, Network,
-  LogOut, ChevronLeft, ChevronRight, Sun, Moon, Cpu, BrainCircuit, Radio, FlaskConical
+  LogOut, ChevronLeft, ChevronRight, Sun, Moon, Cpu, BrainCircuit, Radio, FlaskConical,
+  Menu, X
 } from 'lucide-react'
 
 import { useTenant } from '../contexts/TenantContext'
@@ -58,17 +59,70 @@ function NucleoEmblem({ size = 36 }: { size?: number }) {
   )
 }
 
+// ── Mobile Menu Button (exportado para o AppLayout usar) ──────────
+export function MobileMenuButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="md:hidden flex items-center justify-center w-9 h-9 rounded-xl transition-colors"
+      style={{
+        background: 'var(--surface-hover)',
+        border: '1px solid var(--border)',
+        color: 'var(--text-muted)',
+      }}
+      aria-label="Menu"
+    >
+      <Menu size={18} />
+    </button>
+  )
+}
+
 export default function Sidebar() {
   const { user, logout } = useTenant()
   const { toggleTheme, isDark } = useTheme()
   const navigate = useNavigate()
+  const location = useLocation()
   const [collapsed, setCollapsed] = useState(false)
+  const [mobileOpen, setMobileOpen] = useState(false)
+
+  // Fechar sidebar mobile ao navegar
+  useEffect(() => {
+    setMobileOpen(false)
+  }, [location.pathname])
+
+  // Fechar sidebar mobile ao redimensionar para desktop
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768) setMobileOpen(false)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const handleLogout = () => { logout(); navigate('/') }
 
+  // Exportar toggle como callback estável
+  const toggleMobile = useCallback(() => setMobileOpen(prev => !prev), [])
+
+  // Guardar toggle na sidebar para o AppLayout acessar
+  ;(Sidebar as any).__toggleMobile = toggleMobile
+
   return (
+    <>
+    {/* Overlay backdrop (mobile only) */}
+    {mobileOpen && (
+      <div
+        className="fixed inset-0 z-40 md:hidden"
+        style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+        onClick={() => setMobileOpen(false)}
+      />
+    )}
+
     <aside
-      className={`flex flex-col ${collapsed ? 'w-[64px]' : 'w-[220px]'} min-h-screen flex-shrink-0 transition-all duration-300 ease-in-out`}
+      className={`flex flex-col ${collapsed ? 'w-[64px]' : 'w-[220px]'} min-h-screen flex-shrink-0 transition-all duration-300 ease-in-out
+        fixed md:relative z-50 md:z-auto
+        ${mobileOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
+      `}
       style={{
         background: 'var(--surface-card)',
         borderRight: '1px solid var(--border)',
@@ -259,10 +313,23 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* Collapse toggle */}
+      {/* Close button (mobile) */}
+      <button
+        onClick={() => setMobileOpen(false)}
+        className="md:hidden flex items-center justify-center w-8 h-8 rounded-full cursor-pointer transition-all mx-auto mb-2"
+        style={{
+          background: 'var(--surface-hover)',
+          border: '1px solid var(--border)',
+          color: 'var(--text-muted)',
+        }}
+      >
+        <X size={14} />
+      </button>
+
+      {/* Collapse toggle (desktop only) */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="flex items-center justify-center w-5 h-5 rounded-full cursor-pointer transition-all mx-auto mb-3"
+        className="hidden md:flex items-center justify-center w-5 h-5 rounded-full cursor-pointer transition-all mx-auto mb-3"
         style={{
           background: 'var(--surface-hover)',
           border: '1px solid var(--border)',
@@ -272,5 +339,6 @@ export default function Sidebar() {
         {collapsed ? <ChevronRight size={11} /> : <ChevronLeft size={11} />}
       </button>
     </aside>
+    </>
   )
 }
