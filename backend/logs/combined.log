@@ -67163,3 +67163,58 @@ Faça um resu"
 2026-04-06 16:57:08 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
 2026-04-06 16:57:08 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
 2026-04-06 16:57:08 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:19 [[32minfo[39m] 🚀 O Núcleo backend rodando na porta 3001
+2026-04-07 17:17:19 [[32minfo[39m] 🤖 James: POST /api/james/think | /transcribe | /tts
+2026-04-07 17:17:20 [[32minfo[39m] ✅ BullMQ + Redis: workers ativos
+2026-04-07 17:17:20 [[33mwarn[39m] [Redis] Connection error (non-fatal): 
+2026-04-07 17:17:20 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:20 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:20 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:20 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:20 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:20 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:20 [[31merror[39m] Worker error Connection is closed. {"stack":"Error: Connection is closed.\n    at EventEmitter.connectionCloseHandler (C:\\Users\\User\\OneDrive\\Documentos\\Nucleo\\backend\\node_modules\\ioredis\\built\\Redis.js:208:28)\n    at Object.onceWrapper (node:events:623:12)\n    at EventEmitter.emit (node:events:520:22)\n    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)"}
+2026-04-07 17:17:20 [[31merror[39m] Worker error Connection is closed. {"stack":"Error: Connection is closed.\n    at EventEmitter.connectionCloseHandler (C:\\Users\\User\\OneDrive\\Documentos\\Nucleo\\backend\\node_modules\\ioredis\\built\\Redis.js:208:28)\n    at Object.onceWrapper (node:events:623:12)\n    at EventEmitter.emit (node:events:520:22)\n    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)"}
+2026-04-07 17:17:20 [[31merror[39m] Worker error Connection is closed. {"stack":"Error: Connection is closed.\n    at EventEmitter.connectionCloseHandler (C:\\Users\\User\\OneDrive\\Documentos\\Nucleo\\backend\\node_modules\\ioredis\\built\\Redis.js:208:28)\n    at Object.onceWrapper (node:events:623:12)\n    at EventEmitter.emit (node:events:520:22)\n    at process.processTicksAndRejections (node:internal/process/task_queues:85:11)"}
+2026-04-07 17:17:20 [[33mwarn[39m] [Process] Unhandled rejection (non-fatal): Error: Connection is closed.
+2026-04-07 17:17:21 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:21 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:21 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:21 [[33mwarn[39m] [Redis] Connection error (non-fatal): 
+2026-04-07 17:17:21 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:21 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:21 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:23 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:23 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:23 [[33mwarn[39m] [Redis] Connection error (non-fatal): 
+2026-04-07 17:17:23 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:23 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:23 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:23 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:26 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:26 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:26 [[33mwarn[39m] [Redis] Connection error (non-fatal): 
+2026-04-07 17:17:26 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:26 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:26 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:26 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:26 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:26 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:26 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:26 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:26 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:17:26 [[31merror[39m] Worker error {"code":"ECONNREFUSED","stack":"AggregateError [ECONNREFUSED]: \n    at internalConnectMultiple (node:net:1193:18)\n    at afterConnectMultiple (node:net:1783:7)"}
+2026-04-07 17:21:45 [[32minfo[39m] [JAMES TRANSCRIBE] "Obrigado, James."
+2026-04-07 17:21:46 [[32minfo[39m] [JAMES TRANSCRIBE] "beijos"
+2026-04-07 17:22:52 [[32minfo[39m] [JAMES TRANSCRIBE] "Fale comigo, James. Qual é a plataforma de Beauty Hub e o qu"
+2026-04-07 17:24:09 [[32minfo[39m] [JAMES TRANSCRIBE] "a plataforma, como é a..."
+2026-04-07 17:26:00 [[32minfo[39m] [JAMES] session:test | turns:1 | "Ola James"
+2026-04-07 17:29:12 [[32minfo[39m] [INTEL-THINK] "Boa tarde Comandante James" → 242 chars
+2026-04-07 17:29:16 [[32minfo[39m] [JAMES TRANSCRIBE] "Falem um pouco sobre o The Beauty Hub."
+2026-04-07 17:29:59 [[32minfo[39m] [INTEL-THINK] "qual seria o próximo passo para nós fazer a escala" → 303 chars
+2026-04-07 17:30:27 [[32minfo[39m] [INTEL-THINK] "continue falando querido quero saber tudo que a ge" → 364 chars
+2026-04-07 17:30:52 [[32minfo[39m] [JAMES TRANSCRIBE] "Quero saber qual é a nossa próxima..."
+2026-04-07 17:32:16 [[32minfo[39m] [JAMES TRANSCRIBE] "Me fale mais para saber qual é a possibilidade..."
+2026-04-07 17:38:54 [[32minfo[39m] [JAMES TRANSCRIBE] "Ah, Jaymis!"
+2026-04-07 17:40:39 [[32minfo[39m] [JAMES TRANSCRIBE] "O que você aprendeu no treinamento do The Beauty Hub?"
+2026-04-07 17:46:34 [[32minfo[39m] [JAMES TRANSCRIBE] "Tá vivo, James?"

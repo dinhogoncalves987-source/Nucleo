@@ -1,6 +1,7 @@
 #!/bin/bash
 # ============================================================
-# deploy.sh — Script de Deploy Automatizado na VPS Hostinger
+# deploy.sh — Script de Deploy Automatizado na VPS
+# Compatível com: Oracle Cloud, Hostinger, Contabo, DigitalOcean
 # Execute: chmod +x deploy.sh && ./deploy.sh
 # ============================================================
 set -e
@@ -13,15 +14,21 @@ echo "📋 Verificando dependências..."
 command -v docker >/dev/null 2>&1 || { echo "❌ Docker não instalado. Rode: apt install docker.io"; exit 1; }
 command -v docker-compose >/dev/null 2>&1 || command -v docker compose >/dev/null 2>&1 || { echo "❌ docker-compose não encontrado. Instalando..."; apt install docker-compose-plugin -y; }
 command -v nginx >/dev/null 2>&1 || { echo "📦 Instalando Nginx..."; apt install nginx -y; }
+command -v certbot >/dev/null 2>&1 || { echo "📦 Instalando Certbot (SSL)..."; apt install certbot python3-certbot-nginx -y; }
 
 # ── 2. Cria arquivo .env se não existir ────────────────────
 if [ ! -f .env ]; then
   echo "⚙️  Criando .env a partir do template..."
-  cp backend/.env.example .env
+  cp backend/.env .env 2>/dev/null || echo "⚠️  Copie o backend/.env para .env e preencha as credenciais"
   echo "⚠️  IMPORTANTE: Edite o arquivo .env com suas credenciais antes de continuar!"
   echo "   nano .env"
   read -p "Pressione ENTER após editar o .env..."
 fi
+
+# ── 2.1. Valida variáveis de ambiente ──────────────────────
+echo "🔐 Validando variáveis de ambiente..."
+cd backend && bash check-env.sh && cd ..
+echo ""
 
 # ── 3. Instala dependências e compila o Frontend ───────────
 echo "🎨 Compilando Frontend..."
@@ -87,14 +94,18 @@ echo "  🤖 Backend:   http://${VPS_IP}:3001/health"
 echo "  📡 Evolution: http://${VPS_IP}:8080"
 echo ""
 echo "📌 Próximos passos:"
-echo "  1. Acesse http://${VPS_IP} e faça login"
-echo "  2. Vá em Chip Control → crie chips"
-echo "  3. Escaneie QR code de cada chip"
-echo "  4. Aguarde warmup (7 dias) → inicie campanhas!"
+echo "  1. Configure SSL: certbot --nginx -d SEU_DOMINIO"
+echo "  2. Acesse http://${VPS_IP} e faça login"
+echo "  3. Vá em Chip Control → crie chips"
+echo "  4. Escaneie QR code de cada chip"
+echo "  5. Aguarde warmup (7 dias) → inicie campanhas!"
 echo ""
 echo "📊 Monitoramento:"
 echo "  - Health:    curl http://${VPS_IP}:3001/health"
 echo "  - Chips:     curl http://${VPS_IP}:3001/api/chips"
 echo "  - Filas:     curl http://${VPS_IP}:3001/api/queue/stats"
 echo "  - Scheduler: curl http://${VPS_IP}:3001/api/scheduler/status"
-echo "  - Logs:      docker-compose logs -f backend"
+echo "  - Logs:      docker compose logs -f backend"
+echo ""
+echo "⚠️  Oracle Cloud: Abra as portas 80, 443, 3001, 8080 no Security List"
+echo "   e no iptables: sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT"

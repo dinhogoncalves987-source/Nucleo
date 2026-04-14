@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
-  TrendingUp, DollarSign, ArrowUpRight, RefreshCw,
-  Sparkles, AlertCircle, Users, BarChart3, Zap,
+  TrendingUp, ArrowUpRight, RefreshCw,
+  AlertCircle, Users, BarChart3, Zap,
 } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 import AppLayout from '../components/AppLayout'
@@ -30,10 +30,7 @@ export default function Dashboard() {
   const { isDark } = useTheme()
   const [billingData, setBillingData] = useState<{ month: string; value: number }[]>([])
   const [leadCounts, setLeadCounts] = useState<LeadCounts>({ new: 0, contacted: 0, qualified: 0, converted: 0 })
-  const [monthlyTotal, setMonthlyTotal] = useState(0)
-  const [grandTotal, setGrandTotal] = useState(0)
   const [tenantCount, setTenantCount] = useState(1)
-  const [gmv, setGmv] = useState(0)  // Gross Merchandise Value do Bubble (quando disponível)
   const [loading, setLoading] = useState(true)
   const [isDemo, setIsDemo] = useState(false)
 
@@ -53,13 +50,6 @@ export default function Dashboard() {
       if (finances && finances.length > 0) {
         const grouped = groupByMonth(finances as FinanceRow[])
         setBillingData(grouped)
-        const total = finances.reduce((s, f) => s + Number(f.amount), 0)
-        setGrandTotal(total)
-        const now = new Date()
-        const monthly = finances
-          .filter(f => new Date(f.transaction_date).getMonth() === now.getMonth())
-          .reduce((s, f) => s + Number(f.amount), 0)
-        setMonthlyTotal(monthly)
       } else {
         setIsDemo(true)
         setBillingData([
@@ -67,9 +57,6 @@ export default function Dashboard() {
           { month: 'Dez/24', value: 21200 }, { month: 'Jan/25', value: 29800 },
           { month: 'Fev/25', value: 33100 }, { month: 'Mar/25', value: 41500 },
         ])
-        setMonthlyTotal(41500)
-        setGrandTotal(168700)
-        setGmv(320000) // GMV demo
       }
 
       // Count tenants (for SaaS MRR)
@@ -91,13 +78,6 @@ export default function Dashboard() {
 
   const totalLeads = Object.values(leadCounts).reduce((a, b) => a + b, 0) || 1
   const conversionRate = ((leadCounts.converted / totalLeads) * 100).toFixed(1)
-
-  // SaaS vs Marketplace calculation
-  const MONTHLY_SAAS_PER_TENANT = 150
-  const MARKETPLACE_PCT = 0.07
-  const saasMRR = tenantCount * MONTHLY_SAAS_PER_TENANT
-  const marketplacePotential = gmv * MARKETPLACE_PCT
-  const dinheiroDeixado = Math.max(0, marketplacePotential - saasMRR)
 
   const tooltipStyle = {
     background: isDark ? '#1E1218' : '#ffffff',
@@ -124,13 +104,13 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* KPIs */}
+      {/* KPIs — Métricas de Lançamento */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         {[
-          { icon: DollarSign, label: 'Faturamento Mensal', value: fmt(monthlyTotal), sub: 'Mês atual', c: 'var(--accent)', bg: 'var(--accent-muted)' },
-          { icon: TrendingUp, label: 'Faturamento Total', value: fmt(grandTotal), sub: 'Acumulado', c: 'var(--accent)', bg: 'var(--accent-muted)' },
-          { icon: Users, label: 'Salões Ativos', value: String(tenantCount), sub: `MRR: ${fmt(saasMRR)}`, c: 'var(--gold)', bg: 'var(--gold-muted)' },
-          { icon: BarChart3, label: 'Taxa de Conversão', value: `${conversionRate}%`, sub: `${leadCounts.converted} convertidos`, c: '#7c3aed', bg: 'rgba(124,58,237,0.1)' },
+          { icon: Users, label: 'Estabelecimentos', value: String(tenantCount), sub: 'Parceiros na plataforma', c: 'var(--accent)', bg: 'var(--accent-muted)' },
+          { icon: TrendingUp, label: 'Clientes', value: String(totalLeads), sub: 'Base total de clientes', c: '#10b981', bg: 'rgba(16,185,129,0.1)' },
+          { icon: BarChart3, label: 'Leads Pipeline', value: String(leadCounts.new + leadCounts.contacted), sub: `${leadCounts.new} novos | ${leadCounts.contacted} contatados`, c: 'var(--gold)', bg: 'var(--gold-muted)' },
+          { icon: Zap, label: 'Taxa de Conversão', value: `${conversionRate}%`, sub: `${leadCounts.converted} convertidos`, c: '#7c3aed', bg: 'rgba(124,58,237,0.1)' },
         ].map(({ icon: Icon, label, value, sub, c, bg }) => (
           <div key={label} className="card animate-fade-in">
             <div className="flex items-center justify-between mb-3">
@@ -145,74 +125,6 @@ export default function Dashboard() {
             <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{sub}</p>
           </div>
         ))}
-      </div>
-
-      {/* Visão do Dono — SaaS vs Marketplace */}
-      <div className="card mb-5 animate-fade-in" style={{ borderColor: 'var(--accent)', borderWidth: 1.5, background: 'linear-gradient(135deg, var(--surface-card) 60%, rgba(194,24,91,0.03) 100%)' }}>
-        <div className="flex items-center gap-2 mb-4">
-          <Sparkles size={16} style={{ color: 'var(--accent)' }} />
-          <p className="section-title" style={{ marginBottom: 0 }}>Visão do Dono — Arbitragem de Modelo</p>
-          {isDemo && <span className="badge-warning text-xs">PROJEÇÃO</span>}
-        </div>
-        <p className="text-xs mb-4" style={{ color: 'var(--text-muted)' }}>
-          Compare o que você cobra hoje (SaaS fixo) com o que poderia cobrar em marketplace por transação.
-        </p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          {/* SaaS atual */}
-          <div className="p-4 rounded-2xl" style={{ background: 'var(--accent-muted)', border: '1px solid rgba(194,24,91,0.15)' }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--accent)' }}>
-              💳 Receita SaaS Atual
-            </p>
-            <p className="text-2xl font-bold" style={{ color: 'var(--accent)', fontFamily: "'Playfair Display', serif" }}>
-              {loading ? '—' : fmt(saasMRR)}
-            </p>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              {tenantCount} salão(ões) × R$ {MONTHLY_SAAS_PER_TENANT}/mês
-            </p>
-          </div>
-
-          {/* GMV + Potencial */}
-          <div className="p-4 rounded-2xl" style={{ background: 'var(--gold-muted)', border: '1px solid rgba(181,134,13,0.2)' }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{ color: 'var(--gold)' }}>
-              🏦 Potencial Marketplace (7%)
-            </p>
-            <p className="text-2xl font-bold" style={{ color: 'var(--gold)', fontFamily: "'Playfair Display', serif" }}>
-              {loading ? '—' : fmt(marketplacePotential)}
-            </p>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              GMV: {fmt(gmv)} × 7% comissão
-            </p>
-          </div>
-
-          {/* Dinheiro deixado na mesa */}
-          <div className="p-4 rounded-2xl" style={{
-            background: dinheiroDeixado > 0 ? 'rgba(220,38,38,0.07)' : 'rgba(16,185,129,0.07)',
-            border: `1px solid ${dinheiroDeixado > 0 ? 'rgba(220,38,38,0.2)' : 'rgba(16,185,129,0.2)'}`,
-          }}>
-            <p className="text-xs font-bold uppercase tracking-wide mb-2" style={{
-              color: dinheiroDeixado > 0 ? '#dc2626' : '#10b981',
-            }}>
-              {dinheiroDeixado > 0 ? '⚡ Receita não capturada' : '✅ SaaS supera Marketplace'}
-            </p>
-            <p className="text-2xl font-bold" style={{
-              color: dinheiroDeixado > 0 ? '#dc2626' : '#10b981',
-              fontFamily: "'Playfair Display', serif",
-            }}>
-              {loading ? '—' : fmt(dinheiroDeixado)}
-            </p>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              {dinheiroDeixado > 0 ? 'por mês, por migrar para marketplace' : 'mantendo modelo SaaS'}
-            </p>
-          </div>
-        </div>
-
-        {gmv === 0 && !isDemo && (
-          <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
-            <Zap size={11} className="inline mr-1" style={{ color: 'var(--gold)' }} />
-            Conecte o Bubble para calcular o GMV real e ver o potencial de marketplace.
-          </p>
-        )}
       </div>
 
       {/* Charts */}

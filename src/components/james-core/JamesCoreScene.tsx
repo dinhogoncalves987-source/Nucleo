@@ -6,6 +6,7 @@ import { Suspense, useMemo, Component, type ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import * as THREE from 'three'
 import CoreCenter from './CoreCenter'
+import CoreFace from './CoreFace'
 import CoreRings from './CoreRings'
 import CoreParticles from './CoreParticles'
 import CoreHUD from './CoreHUD'
@@ -49,6 +50,7 @@ function SceneContent({ state, nucleusIntensity }: JamesCoreSceneProps) {
       <CoreLighting state={state} intensity={nucleusIntensity} />
       <CoreReactorHousing state={state} intensity={nucleusIntensity} />
       <CoreCenter state={state} intensity={nucleusIntensity} />
+      <CoreFace state={state} intensity={nucleusIntensity} />
       <CoreRings state={state} intensity={nucleusIntensity} />
       {showParticles && <CoreParticles state={state} intensity={nucleusIntensity} />}
       <CoreHUD state={state} intensity={nucleusIntensity} />

@@ -24,10 +24,16 @@ class ErrorBoundary extends Component<
   }
 }
 
-// Lazy load — cada página só carrega quando o usuário navegar até ela
+// ── Lazy Load: Páginas Operacionais ─────────────────────────
 const Login = lazy(() => import('./pages/Login'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
+const Estabelecimentos = lazy(() => import('./pages/Estabelecimentos'))
+const Clientes = lazy(() => import('./pages/Clientes'))
 const Leads = lazy(() => import('./pages/Leads'))
+const Campanhas = lazy(() => import('./pages/Campanhas'))
+const Atendimento = lazy(() => import('./pages/Atendimento'))
+
+// ── Lazy Load: Páginas Admin/Técnicas ───────────────────────
 const AgentConfig = lazy(() => import('./pages/AgentConfig'))
 const James = lazy(() => import('./pages/James'))
 const Activations = lazy(() => import('./pages/Activations'))
@@ -38,7 +44,7 @@ const ChipsMonitor = lazy(() => import('./pages/ChipsMonitor'))
 const QueueMonitor = lazy(() => import('./pages/QueueMonitor'))
 const JamesTraining = lazy(() => import('./pages/JamesTraining'))
 const ChipControl = lazy(() => import('./pages/ChipControl'))
-const JamesCommandCenter = lazy(() => import('./pages/JamesCommandCenter')) // legacy — kept for potential direct use
+const JamesCommandCenter = lazy(() => import('./pages/JamesCommandCenter'))
 const IntelOverview    = lazy(() => import('./pages/intel/IntelOverview'))
 const IntelChips       = lazy(() => import('./pages/intel/IntelChips'))
 const IntelChipDetail  = lazy(() => import('./pages/intel/IntelChipDetail'))
@@ -87,8 +93,16 @@ function AppRoutes() {
           }
         />
         <Route path="/login" element={<Login />} />
+
+        {/* ── Operacional ───────────────────────────────── */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+        <Route path="/estabelecimentos" element={<ProtectedRoute><Estabelecimentos /></ProtectedRoute>} />
+        <Route path="/clientes" element={<ProtectedRoute><Clientes /></ProtectedRoute>} />
         <Route path="/leads" element={<ProtectedRoute><Leads /></ProtectedRoute>} />
+        <Route path="/campanhas" element={<ProtectedRoute><Campanhas /></ProtectedRoute>} />
+        <Route path="/atendimento" element={<ProtectedRoute><Atendimento /></ProtectedRoute>} />
+
+        {/* ── Admin / Técnico ───────────────────────────── */}
         <Route path="/agent-config" element={<ProtectedRoute><AgentConfig /></ProtectedRoute>} />
         <Route path="/james" element={<ProtectedRoute><ErrorBoundary label="General James"><James /></ErrorBoundary></ProtectedRoute>} />
         <Route path="/activations" element={<ProtectedRoute><Activations /></ProtectedRoute>} />

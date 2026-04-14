@@ -3,21 +3,20 @@ import { NavLink, useNavigate, useLocation } from 'react-router-dom'
 import {
   LayoutDashboard, Users, Bot, Zap, Plug, ShieldCheck, Network,
   LogOut, ChevronLeft, ChevronRight, Sun, Moon, Cpu, BrainCircuit, Radio, FlaskConical,
-  Menu, X
+  Menu, X, Store, UserCheck, Megaphone, MessageCircle
 } from 'lucide-react'
 
 import { useTenant } from '../contexts/TenantContext'
 import { useTheme } from '../contexts/ThemeContext'
 
+// ── Área Operacional (todos veem) ──
 const navItems = [
-  { to: '/dashboard',                      icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/leads',                          icon: Users,           label: 'O Predador' },
-  { to: '/james',                          icon: Bot,             label: 'James' },
-  { to: '/james-training',                 icon: BrainCircuit,    label: 'James Training' },
-  { to: '/intel',                          icon: FlaskConical,    label: 'James Intel' },
-  { to: '/chip-control',                   icon: Radio,           label: 'Chip Control' },
-  { to: '/activations',                    icon: Zap,             label: 'Viralizador' },
-  { to: '/settings/integrations',          icon: Plug,            label: 'Conexões' },
+  { to: '/dashboard',         icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/estabelecimentos',  icon: Store,           label: 'Estabelecimentos' },
+  { to: '/clientes',          icon: UserCheck,       label: 'Clientes' },
+  { to: '/leads',             icon: Users,           label: 'Leads' },
+  { to: '/campanhas',         icon: Megaphone,       label: 'Campanhas' },
+  { to: '/atendimento',       icon: MessageCircle,   label: 'Atendimento' },
 ]
 
 
@@ -198,21 +197,49 @@ export default function Sidebar() {
           </NavLink>
         ))}
 
-        {/* SuperAdmin */}
+        {/* Admin — Telas técnicas + configuração */}
         {user?.role === 'superadmin' && (
           <>
             <div className="mx-2 my-2" style={{ height: '1px', background: 'var(--border)' }} />
+            <p className={`px-3 text-[10px] font-bold uppercase tracking-widest mb-1 ${collapsed ? 'hidden' : ''}`}
+               style={{ color: 'var(--text-muted)', opacity: 0.5 }}>Admin</p>
+            {[
+              { to: '/james',                icon: Bot,          label: 'James 3D',       color: 'var(--accent)' },
+              { to: '/james-training',       icon: BrainCircuit, label: 'James Training', color: 'var(--accent)' },
+              { to: '/intel',                icon: FlaskConical, label: 'James Intel',    color: 'var(--accent)' },
+              { to: '/chip-control',         icon: Radio,        label: 'Chip Control',   color: 'var(--accent)' },
+              { to: '/settings/integrations',icon: Plug,         label: 'Conexões',       color: 'var(--accent)' },
+              { to: '/activations',          icon: Zap,          label: 'Viralizador (legacy)', color: 'var(--text-muted)' },
+            ].map(({ to, icon: Icon, label, color }) => (
+              <NavLink
+                key={to}
+                to={to}
+                style={({ isActive }) => isActive
+                  ? { background: 'rgba(0,180,255,0.08)', color }
+                  : { color: 'var(--text-muted)' }
+                }
+                className="flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150"
+              >
+                {({ isActive }) => (
+                  <>
+                    <Icon size={15} className="flex-shrink-0" style={{ color: isActive ? color : 'var(--text-muted)' }} />
+                    {!collapsed && <span className="truncate">{label}</span>}
+                  </>
+                )}
+              </NavLink>
+            ))}
+            <div className="mx-2 my-1" style={{ height: '1px', background: 'var(--border)', opacity: 0.5 }} />
             <NavLink
               to="/admin/projects"
               style={({ isActive }) => isActive
                 ? { background: 'rgba(212,160,23,0.10)', color: 'var(--gold)' }
                 : { color: 'var(--text-muted)' }
               }
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
+              className="flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150"
             >
               {({ isActive }) => (
                 <>
-                  <ShieldCheck size={17} className="flex-shrink-0" style={{ color: isActive ? 'var(--gold)' : 'var(--text-muted)' }} />
+                  <ShieldCheck size={15} className="flex-shrink-0" style={{ color: isActive ? 'var(--gold)' : 'var(--text-muted)' }} />
                   {!collapsed && <span className="truncate">SuperAdmin</span>}
                 </>
               )}
@@ -223,11 +250,11 @@ export default function Sidebar() {
                 ? { background: 'rgba(16,185,129,0.10)', color: '#34d399' }
                 : { color: 'var(--text-muted)' }
               }
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
+              className="flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150"
             >
               {({ isActive }) => (
                 <>
-                  <Network size={17} className="flex-shrink-0" style={{ color: isActive ? '#34d399' : 'var(--text-muted)' }} />
+                  <Network size={15} className="flex-shrink-0" style={{ color: isActive ? '#34d399' : 'var(--text-muted)' }} />
                   {!collapsed && <span className="truncate">Afiliados</span>}
                 </>
               )}
@@ -238,11 +265,11 @@ export default function Sidebar() {
                 ? { background: 'rgba(0,180,255,0.10)', color: 'var(--accent)' }
                 : { color: 'var(--text-muted)' }
               }
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
+              className="flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150"
             >
               {({ isActive }) => (
                 <>
-                  <Radio size={17} className="flex-shrink-0" style={{ color: isActive ? 'var(--accent)' : 'var(--text-muted)' }} />
+                  <Radio size={15} className="flex-shrink-0" style={{ color: isActive ? 'var(--accent)' : 'var(--text-muted)' }} />
                   {!collapsed && <span className="truncate">Chips Monitor</span>}
                 </>
               )}
@@ -253,11 +280,11 @@ export default function Sidebar() {
                 ? { background: 'rgba(124,58,237,0.10)', color: '#a78bfa' }
                 : { color: 'var(--text-muted)' }
               }
-              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-150"
+              className="flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-150"
             >
               {({ isActive }) => (
                 <>
-                  <Cpu size={17} className="flex-shrink-0" style={{ color: isActive ? '#a78bfa' : 'var(--text-muted)' }} />
+                  <Cpu size={15} className="flex-shrink-0" style={{ color: isActive ? '#a78bfa' : 'var(--text-muted)' }} />
                   {!collapsed && <span className="truncate">Queue Monitor</span>}
                 </>
               )}

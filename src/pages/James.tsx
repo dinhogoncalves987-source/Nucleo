@@ -246,12 +246,36 @@ export default function James() {
   const vadInitLock   = useRef(false)
   const watchdogRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingCtxRef = useRef<string>('')
+  const audioUnlocked = useRef(false)
+
+  // ── Desbloquear autoplay do browser (DEVE ser chamado em gesto do usuário) ──
+  const unlockAudio = useCallback(() => {
+    if (audioUnlocked.current) return
+    try {
+      // Criar AudioContext no gesto do usuário desbloqueia autoplay
+      const ctx = new AudioContext()
+      const buf = ctx.createBuffer(1, 1, 22050)
+      const src = ctx.createBufferSource()
+      src.buffer = buf
+      src.connect(ctx.destination)
+      src.start(0)
+      // Também criar e tocar um Audio vazio para desbloquear HTMLAudioElement.play()
+      const silence = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=')
+      silence.volume = 0
+      silence.play().catch(() => {})
+      audioUnlocked.current = true
+      console.log('[James] Audio autoplay desbloqueado')
+    } catch (e) {
+      console.warn('[James] Falha ao desbloquear audio:', e)
+    }
+  }, [])
 
 
   // ── TTS via backend — sem chave no frontend ──────────────────────────────────
   // Chama /api/james/tts. Funciona sem OPENAI_API_KEY no browser.
   const speak = useCallback(async (text: string): Promise<void> => {
     if (!text.trim()) return
+    console.log('[James] speak() chamado:', text.slice(0, 60))
     setState('speaking')
     vadRef.current?.pause()
 
@@ -262,24 +286,55 @@ export default function James() {
         body:    JSON.stringify({ text: text.slice(0, 4096), voice: 'onyx' }),
         signal:  AbortSignal.timeout(20_000),
       })
-      if (!res.ok) throw new Error(`TTS ${res.status}`)
+      if (!res.ok) {
+        console.error('[James] TTS respondeu com', res.status)
+        throw new Error(`TTS ${res.status}`)
+      }
 
+      console.log('[James] TTS respondeu 200, reproduzindo áudio...')
       audioRef.current?.pause()
       const url     = URL.createObjectURL(await res.blob())
       const audioEl = new Audio(url)
       audioRef.current = audioEl
 
-      await new Promise<void>(resolve => {
+      await new Promise<void>((resolve) => {
         const cleanup = () => { URL.revokeObjectURL(url); resolve() }
         audioEl.onended  = cleanup
-        audioEl.onerror  = cleanup
+        audioEl.onerror  = (e) => {
+          console.error('[James] Erro no elemento de áudio:', e)
+          cleanup()
+        }
         audioEl.onpause  = () => { if (!audioEl.ended) setTimeout(cleanup, 50) }
-        audioEl.play().catch(cleanup)
+        audioEl.play().then(() => {
+          console.log('[James] Áudio tocando com sucesso!')
+        }).catch((err) => {
+          console.error('[James] FALHA no play():', err.message)
+          // Tentativa 2: usar AudioContext como fallback
+          try {
+            const audioCtx = new AudioContext()
+            fetch(url).then(r => r.arrayBuffer()).then(buf => {
+              audioCtx.decodeAudioData(buf, (decoded) => {
+                const source = audioCtx.createBufferSource()
+                source.buffer = decoded
+                source.connect(audioCtx.destination)
+                source.onended = cleanup
+                source.start(0)
+                console.log('[James] Áudio tocando via AudioContext (fallback)')
+              }, cleanup)
+            }).catch(cleanup)
+          } catch {
+            cleanup()
+          }
+        })
       })
-    } catch { /* TTS falhou — continua sem som */ } finally {
+    } catch (err) {
+      console.error('[James] TTS falhou completamente:', err)
+    } finally {
+      // IMPORTANTE: Mesmo se TTS falhou, manter James ativo (não voltar a dormir)
       if (stateRef.current === 'speaking') {
         setState('active')
         vadRef.current?.start()
+        console.log('[James] Transição speaking → active, VAD iniciado')
       }
     }
   }, [])
@@ -315,10 +370,24 @@ export default function James() {
     resetWatchdog()
 
     try {
-      if (audioBlob.size < 1000) { busyRef.current = false; return }  // too short — reset busy!
+      if (audioBlob.size < 1000) {
+        console.log('[James] Audio muito curto, ignorando')
+        busyRef.current = false
+        clearWatchdog()
+        setState('active')
+        vadRef.current?.start()
+        return
+      }
 
       const rawText = await transcribeBackend(audioBlob)
-      if (!rawText || rawText.length < 2) return
+      if (!rawText || rawText.length < 2) {
+        console.log('[James] Transcrição vazia, retomando escuta')
+        busyRef.current = false
+        clearWatchdog()
+        setState('active')
+        vadRef.current?.start()
+        return
+      }
 
       const t = rawText.toLowerCase().replace(/[.,!?;:]/g, '').trim()
 
@@ -371,6 +440,8 @@ export default function James() {
         // James já está ativo mas recebeu uma saudação — responde e fica pronto
         const hour = new Date().getHours()
         const period = hour < 12 ? 'bom dia' : hour < 18 ? 'boa tarde' : 'boa noite'
+        busyRef.current = false
+        clearWatchdog()
         speak(`${period.charAt(0).toUpperCase() + period.slice(1)}, Comandante! Estou pronto. O que precisa?`).catch(() => {})
         return
       }
@@ -666,12 +737,15 @@ export default function James() {
 
   // ── Orb click ───────────────────────────────────────────────────────────
   const handleOrbClick = useCallback(() => {
+    // CRÍTICO: Desbloquear audio no gesto direto do usuário
+    unlockAudio()
     const s = stateRef.current
+    console.log('[James] Orb clicado, state:', s)
     if (s === 'nucleus')  { summon('default'); return }                      // clique acorda James com saudação
     if (s === 'opening')  return
     if (s === 'speaking') { audioRef.current?.pause(); setState('active');  return }
     if (s === 'active' || s === 'waiting') { dismiss();                     return }
-  }, [dismiss, summon])
+  }, [dismiss, summon, unlockAudio])
 
   // ── UI helpers ──────────────────────────────────────────────────────────
 

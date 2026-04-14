@@ -64,6 +64,12 @@ export async function processInboundMessage(event: EvolutionEvent): Promise<void
       leadStatus:    lead?.status,
     })
 
+    // Delay humano — simula tempo de digitação (2-6s proporcional ao tamanho)
+    const baseDelay = 2000
+    const typingDelay = Math.min(4000, reply.length * 30) // ~30ms por caractere, max 4s extra
+    const jitter = Math.random() * 1000 // variação aleatória de 0-1s
+    await new Promise(r => setTimeout(r, baseDelay + typingDelay + jitter))
+
     // Envia resposta pelo mesmo chip
     await sendMessageViaChip(instance, phone, reply)
 
