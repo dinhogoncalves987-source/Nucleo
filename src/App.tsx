@@ -1,6 +1,7 @@
 import { lazy, Suspense, Component, type ReactNode } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { TenantProvider, useTenant } from './contexts/TenantContext'
+import { TenantProvider } from './contexts/TenantContext'
+import { useTenant } from './contexts/tenant-context'
 import { ThemeProvider } from './contexts/ThemeContext'
 
 // ── Error Boundary para debug de crashes ────────────────────

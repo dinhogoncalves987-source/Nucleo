@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { UserCheck, Plus, Search, Phone, Mail, CheckCircle2, Clock, Star, Pencil, X, Save, Store } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
-import { useTenant } from '../contexts/TenantContext'
+import { useTenant } from '../contexts/tenant-context'
 import { supabase } from '../lib/supabase'
 
 interface Cliente {

@@ -6,7 +6,7 @@ import {
   Flame, Thermometer, Snowflake, ExternalLink, RefreshCw, ShieldCheck, StopCircle,
 } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
-import { useTenant } from '../contexts/TenantContext'
+import { useTenant } from '../contexts/tenant-context'
 import { supabase } from '../lib/supabase'
 import { generateBatchMessages } from '../lib/openai'
 import type { Lead } from '../types'

@@ -6,8 +6,8 @@ import {
   Menu, X, Store, UserCheck, Megaphone, MessageCircle
 } from 'lucide-react'
 
-import { useTenant } from '../contexts/TenantContext'
-import { useTheme } from '../contexts/ThemeContext'
+import { useTenant } from '../contexts/tenant-context'
+import { useTheme } from '../contexts/theme-context'
 
 // ── Área Operacional (todos veem) ──
 const navItems = [

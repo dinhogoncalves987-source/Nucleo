@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import AppLayout from '../components/AppLayout'
 import { supabase } from '../lib/supabase'
-import { useTenant } from '../contexts/TenantContext'
+import { useTenant } from '../contexts/tenant-context'
 import {
   ChevronRight, ChevronLeft, Check, Plus, X, Send,
   Building2, ShoppingBag, GraduationCap, Users, Calendar,

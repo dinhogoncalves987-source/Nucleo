@@ -5,7 +5,7 @@ import {
   Sparkles, Copy, ExternalLink,
 } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
-import { useTenant } from '../contexts/TenantContext'
+import { useTenant } from '../contexts/tenant-context'
 import { supabase } from '../lib/supabase'
 import { BubbleAgendamentos, BubbleClientes, type BubbleClient } from '../lib/bubble'
 import { generateRescueMessage } from '../lib/openai'

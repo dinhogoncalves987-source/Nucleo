@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { MessageCircle, Search, Phone, Clock, CheckCircle2, AlertCircle } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
-import { useTenant } from '../contexts/TenantContext'
+import { useTenant } from '../contexts/tenant-context'
 import { supabase } from '../lib/supabase'
 
 interface Conversa {

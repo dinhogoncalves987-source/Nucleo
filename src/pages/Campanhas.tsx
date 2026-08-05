@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Megaphone, Rocket, UserPlus, ArrowRightLeft, Clock, CheckCircle2, Pause, Play, Eye } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
-import { useTenant } from '../contexts/TenantContext'
+import { useTenant } from '../contexts/tenant-context'
 import { supabase } from '../lib/supabase'
 
 interface Campanha {

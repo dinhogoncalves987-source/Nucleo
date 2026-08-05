@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Plug, Eye, EyeOff, Save, CheckCircle2, RefreshCw, Users, Calendar, Bot } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
-import { useTenant } from '../contexts/TenantContext'
+import { useTenant } from '../contexts/tenant-context'
 import { supabase } from '../lib/supabase'
 import { bubbleHealthCheck, BubbleClientes, BubbleAgendamentos } from '../lib/bubble'
 import { checkOpenAIKey } from '../lib/openai'

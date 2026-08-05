@@ -1,21 +1,8 @@
-import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react'
+import { useState, useEffect, ReactNode, useRef } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import type { Tenant, User } from '../types'
-
-interface TenantContextType {
-  tenant: Tenant | null
-  user: User | null
-  session: Session | null
-  isAuthenticated: boolean
-  loading: boolean
-  setTenant: (t: Tenant) => void
-  setUser: (u: User) => void
-  logout: () => Promise<void>
-  loginWithSupabase: (email: string, password: string) => Promise<{ error: string | null }>
-}
-
-const TenantContext = createContext<TenantContextType | null>(null)
+import { TenantContext } from './tenant-context'
 
 // ── Dev Mode: bypass auth in development ──────────────────
 const DEV_MODE = import.meta.env.DEV
@@ -140,10 +127,4 @@ export function TenantProvider({ children }: { children: ReactNode }) {
       {children}
     </TenantContext.Provider>
   )
-}
-
-export function useTenant() {
-  const ctx = useContext(TenantContext)
-  if (!ctx) throw new Error('useTenant must be used within TenantProvider')
-  return ctx
 }

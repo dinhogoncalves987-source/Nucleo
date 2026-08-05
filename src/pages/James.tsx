@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useTenant } from '../contexts/TenantContext'
+import { useTenant } from '../contexts/tenant-context'
 import JamesCoreWrapper from '../components/james-core/JamesCoreWrapper'
 // MicVAD replaced by native MediaRecorder VAD (no external deps)
 

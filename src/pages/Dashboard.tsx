@@ -5,8 +5,8 @@ import {
 } from 'lucide-react'
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts'
 import AppLayout from '../components/AppLayout'
-import { useTenant } from '../contexts/TenantContext'
-import { useTheme } from '../contexts/ThemeContext'
+import { useTenant } from '../contexts/tenant-context'
+import { useTheme } from '../contexts/theme-context'
 import { supabase } from '../lib/supabase'
 
 interface FinanceRow { transaction_date: string; amount: number; type?: string }

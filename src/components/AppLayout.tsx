@@ -3,7 +3,7 @@ import Sidebar, { MobileMenuButton } from './Sidebar'
 import type { SidebarComponent } from './Sidebar'
 import GlobalJames from './GlobalJames'
 import { Bell } from 'lucide-react'
-import { useTenant } from '../contexts/TenantContext'
+import { useTenant } from '../contexts/tenant-context'
 
 interface Props {
   children: ReactNode

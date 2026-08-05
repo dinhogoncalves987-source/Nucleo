@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Bot, Upload, FileText, Trash2, Brain, AlertCircle, CheckCircle2, Plus } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
-import { useTenant } from '../contexts/TenantContext'
+import { useTenant } from '../contexts/tenant-context'
 import { supabase } from '../lib/supabase'
 import type { KnowledgeBase } from '../types'
 

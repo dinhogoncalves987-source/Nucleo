@@ -5,7 +5,7 @@ import { Network, TrendingUp, Users, DollarSign,
 import AppLayout from '../components/AppLayout'
 import { getAffiliateAuditData, getOrCreateAffiliate, generateAffiliateLink, type AffiliateAuditRow } from '../lib/affiliates'
 import { checkAffiliateOpportunities } from '../lib/openai'
-import { useTenant } from '../contexts/TenantContext'
+import { useTenant } from '../contexts/tenant-context'
 
 export default function AffiliateAudit() {
   const { tenant } = useTenant()

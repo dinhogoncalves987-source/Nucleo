@@ -1,7 +1,7 @@
 import { useState, FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, ArrowRight, AlertCircle, Cpu } from 'lucide-react'
-import { useTenant } from '../contexts/TenantContext'
+import { useTenant } from '../contexts/tenant-context'
 
 // O Núcleo Login Page
 export default function Login() {
