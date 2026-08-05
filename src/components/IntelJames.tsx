@@ -303,47 +303,6 @@ export default function IntelJames({ context }: { context: JamesContext }) {
     }
   }, [voiceEnabled, mode])
 
-  // ── STT ─────────────────────────────────────────────────────────────────
-  const startListening = useCallback(() => {
-    if (jState !== 'idle' && jState !== 'error') return
-    const recognition = getSpeechRecognition()
-    if (!recognition) {
-      setJState('error')
-      addSystemMsg('Microfone não disponível. Use Chrome para reconhecimento de voz.')
-      setTimeout(() => {
-        if (mountedRef.current) setJState('idle')
-      }, 3000)
-      return
-    }
-    recognitionRef.current = recognition
-    setJState('listening')
-
-    recognition.onresult = (event: { results: { item: (i: number) => { item: (j: number) => { transcript: string } }; length: number } }) => {
-      if (!mountedRef.current) return
-      const transcript = event.results.item(0).item(0).transcript
-      setJState('idle')
-      if (transcript.trim()) void processCommand(transcript.trim())
-    }
-    recognition.onerror = (e: { error: string }) => {
-      if (!mountedRef.current) return
-      setJState('error')
-      if (e.error === 'not-allowed') {
-        addSystemMsg('Permissão de microfone negada. Habilite nas configurações do navegador.')
-      } else if (e.error === 'no-speech') {
-        addSystemMsg('Nenhuma fala detectada. Tente novamente.')
-      }
-      setTimeout(() => {
-        if (mountedRef.current) setJState('idle')
-      }, 2000)
-    }
-    recognition.onend = () => {
-      if (!mountedRef.current) return
-      if (recognitionRef.current === recognition) recognitionRef.current = null
-      setJState(state => state === 'listening' ? 'idle' : state)
-    }
-    recognition.start()
-  }, [jState])
-
   const stopListening = useCallback(() => {
     recognitionRef.current?.stop()
     setJState('idle')
@@ -472,6 +431,47 @@ export default function IntelJames({ context }: { context: JamesContext }) {
       setJState(state => state === 'processing' ? 'idle' : state)
     }
   }, [jState, context, session, navigate, speakText, addSystemMsg, logOp])
+
+  // ── STT ─────────────────────────────────────────────────────────────────
+  const startListening = useCallback(() => {
+    if (jState !== 'idle' && jState !== 'error') return
+    const recognition = getSpeechRecognition()
+    if (!recognition) {
+      setJState('error')
+      addSystemMsg('Microfone não disponível. Use Chrome para reconhecimento de voz.')
+      setTimeout(() => {
+        if (mountedRef.current) setJState('idle')
+      }, 3000)
+      return
+    }
+    recognitionRef.current = recognition
+    setJState('listening')
+
+    recognition.onresult = (event: { results: { item: (i: number) => { item: (j: number) => { transcript: string } }; length: number } }) => {
+      if (!mountedRef.current) return
+      const transcript = event.results.item(0).item(0).transcript
+      setJState('idle')
+      if (transcript.trim()) void processCommand(transcript.trim())
+    }
+    recognition.onerror = (e: { error: string }) => {
+      if (!mountedRef.current) return
+      setJState('error')
+      if (e.error === 'not-allowed') {
+        addSystemMsg('Permissão de microfone negada. Habilite nas configurações do navegador.')
+      } else if (e.error === 'no-speech') {
+        addSystemMsg('Nenhuma fala detectada. Tente novamente.')
+      }
+      setTimeout(() => {
+        if (mountedRef.current) setJState('idle')
+      }, 2000)
+    }
+    recognition.onend = () => {
+      if (!mountedRef.current) return
+      if (recognitionRef.current === recognition) recognitionRef.current = null
+      setJState(state => state === 'listening' ? 'idle' : state)
+    }
+    recognition.start()
+  }, [jState, addSystemMsg, processCommand])
 
   // ── Mode labels ─────────────────────────────────────────────────────────
   const modeLabels: Record<InteractionMode, string> = { both: 'Voz + Texto', voice: 'Só Voz', text: 'Só Texto' }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { RefreshCw, Clock, CheckCircle2, XCircle, AlertTriangle, Layers, Activity } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
 
@@ -25,27 +25,44 @@ export default function QueueMonitor() {
   const [jobs, setJobs]       = useState<QueueJob[]>([])
   const [activeQueue, setActiveQueue] = useState<'outbound' | 'inbound'>('outbound')
   const [loading, setLoading] = useState(true)
+  const activeRequestRef = useRef<AbortController | null>(null)
 
-  const headers = { 'x-api-secret': API_SECRET }
-
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
+    activeRequestRef.current?.abort()
+    const controller = new AbortController()
+    activeRequestRef.current = controller
+    const headers = { 'x-api-secret': API_SECRET }
     setLoading(true)
     try {
       const [sRes, jRes] = await Promise.all([
-        fetch(`${BACKEND_URL}/api/queue/stats`, { headers }),
-        fetch(`${BACKEND_URL}/api/queue/jobs/${activeQueue}`, { headers }),
+        fetch(`${BACKEND_URL}/api/queue/stats`, { headers, signal: controller.signal }),
+        fetch(`${BACKEND_URL}/api/queue/jobs/${activeQueue}`, { headers, signal: controller.signal }),
       ])
-      if (sRes.ok) setStats(await sRes.json())
-      if (jRes.ok) setJobs(await jRes.json())
+      const [nextStats, nextJobs] = await Promise.all([
+        sRes.ok ? (sRes.json() as Promise<QueueStats>) : Promise.resolve(null),
+        jRes.ok ? (jRes.json() as Promise<QueueJob[]>) : Promise.resolve(null),
+      ])
+      if (controller.signal.aborted || activeRequestRef.current !== controller) return
+      if (nextStats) setStats(nextStats)
+      if (nextJobs) setJobs(nextJobs)
     } catch { /* backend offline */ }
-    setLoading(false)
-  }
-
-  useEffect(() => { fetchStats() }, [activeQueue])
-  useEffect(() => {
-    const id = setInterval(() => fetchStats(), 10_000) // atualiza a cada 10s
-    return () => clearInterval(id)
+    finally {
+      if (activeRequestRef.current === controller) {
+        activeRequestRef.current = null
+        if (!controller.signal.aborted) setLoading(false)
+      }
+    }
   }, [activeQueue])
+
+  useEffect(() => {
+    void fetchStats()
+    return () => activeRequestRef.current?.abort()
+  }, [fetchStats])
+
+  useEffect(() => {
+    const id = setInterval(() => { void fetchStats() }, 10_000) // atualiza a cada 10s
+    return () => clearInterval(id)
+  }, [fetchStats])
 
   const queueCard = (name: string, data: Record<string, number>, color: string) => (
     <div className="card">
