@@ -2,7 +2,7 @@
 // CoreCenter.tsx — Ponto central de energia do Nucleus
 // MUITO compacto — apenas o core brilhante, NÃO uma esfera gigante
 // ════════════════════════════════════════════════════════════════════════════
-import { useRef, useMemo } from 'react'
+import { useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { CORE_CENTER, NUCLEUS_COLORS, type JamesCoreState } from './jamesSceneConfig'
@@ -107,13 +107,17 @@ void main() {
 export default function CoreCenter({ state, intensity }: CoreCenterProps) {
   const matRef = useRef<THREE.ShaderMaterial>(null)
 
-  const uniforms = useMemo(() => ({
-    uTime:       { value: 0 },
-    uIntensity:  { value: intensity },
-    uPulseSpeed: { value: CORE_CENTER.pulseSpeed[state] },
-    uCoreColor:  { value: new THREE.Color(NUCLEUS_COLORS.coreInner) },
-    uGlowColor:  { value: new THREE.Color(NUCLEUS_COLORS.coreGlow) },
-  }), [])
+  const uniformsRef = useRef<Record<string, THREE.IUniform> | null>(null)
+  if (!uniformsRef.current) {
+    uniformsRef.current = {
+      uTime:       { value: 0 },
+      uIntensity:  { value: intensity },
+      uPulseSpeed: { value: CORE_CENTER.pulseSpeed[state] },
+      uCoreColor:  { value: new THREE.Color(NUCLEUS_COLORS.coreInner) },
+      uGlowColor:  { value: new THREE.Color(NUCLEUS_COLORS.coreGlow) },
+    }
+  }
+  const uniforms = uniformsRef.current
 
   const targetIntensity = useRef(intensity)
   const targetPulse = useRef(CORE_CENTER.pulseSpeed[state])
