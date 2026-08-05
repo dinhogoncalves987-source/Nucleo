@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plug, Eye, EyeOff, Save, CheckCircle2, RefreshCw, Users, Calendar, Bot } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
 import { useTenant } from '../contexts/tenant-context'
@@ -28,34 +28,14 @@ export default function Integrations() {
   const [bubbleStatus, setBubbleStatus] = useState<'checking' | 'online' | 'offline'>('checking')
   const [bubbleStats, setBubbleStats] = useState<{ clientes: number; agendamentos: number } | null>(null)
   const [openaiStatus, setOpenaiStatus] = useState<'checking' | 'online' | 'offline'>('checking')
+  const bubbleRequestRef = useRef(0)
+  const openaiRequestRef = useRef(0)
 
-  useEffect(() => {
-    if (tenant?.id) fetchKeys()
-    checkBubble()
-    checkOpenAI()
-  }, [tenant])
-
-  const fetchKeys = async () => {
-    setLoading(true)
-    const { data } = await supabase.from('api_keys').select('*').eq('tenant_id', tenant!.id)
-    if (data?.length) {
-      setIntegrations(prev => prev.map(integ => {
-        const found = data.find(d => d.service_name === integ.service)
-        return found ? { ...integ, apiKey: found.api_key, webhookUrl: found.webhook_url ?? '' } : integ
-      }))
-    }
-    // Pre-fill Bubble token from env
-    setIntegrations(prev => prev.map(i =>
-      i.service === 'bubble' && !i.apiKey
-        ? { ...i, apiKey: import.meta.env.VITE_BUBBLE_API_TOKEN ?? '' }
-        : i
-    ))
-    setLoading(false)
-  }
-
-  const checkBubble = async () => {
+  const checkBubble = useCallback(async () => {
+    const requestId = ++bubbleRequestRef.current
     setBubbleStatus('checking')
     const ok = await bubbleHealthCheck()
+    if (bubbleRequestRef.current !== requestId) return
     setBubbleStatus(ok ? 'online' : 'offline')
     if (ok) {
       try {
@@ -63,16 +43,20 @@ export default function Integrations() {
           BubbleClientes.list(1),
           BubbleAgendamentos.list(1),
         ])
+        if (bubbleRequestRef.current !== requestId) return
         setBubbleStats({ clientes: clientes.length, agendamentos: agendamentos.length })
         const [allC, allA] = await Promise.all([BubbleClientes.list(200), BubbleAgendamentos.list(200)])
+        if (bubbleRequestRef.current !== requestId) return
         setBubbleStats({ clientes: allC.length, agendamentos: allA.length })
       } catch { /* silently ignore */ }
     }
-  }
+  }, [])
 
-  const checkOpenAI = async () => {
+  const checkOpenAI = useCallback(async () => {
+    const requestId = ++openaiRequestRef.current
     setOpenaiStatus('checking')
     const ok = await checkOpenAIKey()
+    if (openaiRequestRef.current !== requestId) return
     setOpenaiStatus(ok ? 'online' : 'offline')
     // If backend has a working key, show masked indicator in the UI
     if (ok) {
@@ -82,7 +66,44 @@ export default function Integrations() {
           : i
       ))
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    const tenantId = tenant?.id
+    if (!tenantId) return
+
+    let cancelled = false
+    const fetchKeys = async () => {
+      setLoading(true)
+      const { data } = await supabase.from('api_keys').select('*').eq('tenant_id', tenantId)
+      if (cancelled) return
+      if (data?.length) {
+        setIntegrations(prev => prev.map(integ => {
+          const found = data.find(d => d.service_name === integ.service)
+          return found ? { ...integ, apiKey: found.api_key, webhookUrl: found.webhook_url ?? '' } : integ
+        }))
+      }
+      // Pre-fill Bubble token from env
+      setIntegrations(prev => prev.map(i =>
+        i.service === 'bubble' && !i.apiKey
+          ? { ...i, apiKey: import.meta.env.VITE_BUBBLE_API_TOKEN ?? '' }
+          : i
+      ))
+      setLoading(false)
+    }
+
+    void fetchKeys()
+    return () => { cancelled = true }
+  }, [tenant?.id])
+
+  useEffect(() => {
+    void checkBubble()
+    void checkOpenAI()
+    return () => {
+      bubbleRequestRef.current += 1
+      openaiRequestRef.current += 1
+    }
+  }, [checkBubble, checkOpenAI])
 
   const updateField = (service: string, field: 'apiKey' | 'webhookUrl', value: string) =>
     setIntegrations(prev => prev.map(i => i.service === service ? { ...i, [field]: value } : i))
