@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Wifi, WifiOff, AlertTriangle, Flame, Thermometer,
   RefreshCw, QrCode, Zap, ShieldCheck,
@@ -40,33 +40,51 @@ export default function ChipsMonitor() {
   const [loading, setLoading] = useState(true)
   const [schedulerStatus, setSchedulerStatus] = useState<Record<string, unknown>>({})
   const [backendOnline, setBackendOnline] = useState(false)
+  const activeRequestRef = useRef<AbortController | null>(null)
 
-  const headers = { 'x-api-secret': API_SECRET, 'Content-Type': 'application/json' }
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
+    activeRequestRef.current?.abort()
+    const controller = new AbortController()
+    activeRequestRef.current = controller
+    const headers = { 'x-api-secret': API_SECRET, 'Content-Type': 'application/json' }
     setLoading(true)
     try {
       const [chipsRes, schedRes] = await Promise.all([
-        fetch(`${BACKEND_URL}/api/chips`, { headers }),
-        fetch(`${BACKEND_URL}/api/scheduler/status`, { headers }),
+        fetch(`${BACKEND_URL}/api/chips`, { headers, signal: controller.signal }),
+        fetch(`${BACKEND_URL}/api/scheduler/status`, { headers, signal: controller.signal }),
       ])
       if (chipsRes.ok) {
         const data = await chipsRes.json()
+        if (controller.signal.aborted || activeRequestRef.current !== controller) return
         setChips(data.chips ?? [])
         setBackendOnline(true)
       }
-      if (schedRes.ok) setSchedulerStatus(await schedRes.json())
+      if (schedRes.ok) {
+        const data = await schedRes.json()
+        if (controller.signal.aborted || activeRequestRef.current !== controller) return
+        setSchedulerStatus(data)
+      }
     } catch {
-      setBackendOnline(false)
+      if (!controller.signal.aborted && activeRequestRef.current === controller) {
+        setBackendOnline(false)
+      }
+    } finally {
+      if (activeRequestRef.current === controller) {
+        activeRequestRef.current = null
+        if (!controller.signal.aborted) setLoading(false)
+      }
     }
-    setLoading(false)
-  }
-
-  useEffect(() => { fetchData() }, [])
-  useEffect(() => {
-    const id = setInterval(fetchData, 30_000) // atualiza a cada 30s
-    return () => clearInterval(id)
   }, [])
+
+  useEffect(() => {
+    void fetchData()
+    return () => activeRequestRef.current?.abort()
+  }, [fetchData])
+
+  useEffect(() => {
+    const id = setInterval(() => { void fetchData() }, 30_000) // atualiza a cada 30s
+    return () => clearInterval(id)
+  }, [fetchData])
 
   const stats = {
     total:   chips.length,
