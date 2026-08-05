@@ -61,7 +61,7 @@ export default function AgentConfig() {
       } else {
         setDocs(prev => prev.filter(d => d.id !== tempId))
       }
-    } catch (err) {
+    } catch {
       setDocs(prev => prev.filter(d => d.id !== tempId))
     }
     if (fileInputRef.current) fileInputRef.current.value = ''

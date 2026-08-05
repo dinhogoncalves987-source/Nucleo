@@ -99,7 +99,9 @@ cron.schedule('0 9 * * *', async () => {
   try { await supabase.from('system_events').insert({
     event: 'warmup_session',
     meta: { chips_count: chips.length, timestamp: new Date().toISOString() },
-  }) } catch {}
+  }) } catch {
+    logger.warn('[WARMUP] Falha ao registrar sessão no histórico operacional')
+  }
 
 }, { timezone: 'America/Sao_Paulo' })
 

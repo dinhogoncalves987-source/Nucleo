@@ -33,7 +33,9 @@ async function pauseOutbound(): Promise<void> {
   try { await supabase.from('system_events').insert({
     event: 'scheduler_pause',
     meta: { hour: new Date().getHours(), reason: 'end_of_business' },
-  }) } catch {}
+  }) } catch {
+    logger.warn('[SCHEDULER] Falha ao registrar pausa no histórico operacional')
+  }
 }
 
 // ── Retoma outbound: processa fila acumulada ──────────────────
@@ -48,7 +50,9 @@ async function resumeOutbound(): Promise<void> {
   try { await supabase.from('system_events').insert({
     event: 'scheduler_resume',
     meta: { hour: new Date().getHours(), queued: counts.waiting },
-  }) } catch {}
+  }) } catch {
+    logger.warn('[SCHEDULER] Falha ao registrar retomada no histórico operacional')
+  }
 }
 
 // ── Crons ────────────────────────────────────────────────────

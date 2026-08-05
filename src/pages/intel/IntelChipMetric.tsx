@@ -125,6 +125,14 @@ export default function IntelChipMetric() {
 
   const chip = useMemo(() => chips.find(c => c.id === id), [chips, id])
   const metricConfig = metricParam ? METRIC_MAP[metricParam] : null
+  const metricKey = metricConfig?.key ?? 'learn'
+  const value = chip && metricConfig ? chip[metricConfig.key] as number : 0
+
+  const timeline = useMemo(() => makeTimeline(metricKey, value), [metricKey, value])
+  const breakdown = useMemo(() => makeBreakdown(metricKey, value), [metricKey, value])
+  const events = useMemo(() => makeEvents(metricKey), [metricKey])
+  const insights = useMemo(() => makeInsights(metricKey, value), [metricKey, value])
+  const comparison = useMemo(() => makeComparison(metricKey, value), [metricKey, value])
 
   if (!chip || !metricConfig) {
     return (
@@ -137,13 +145,7 @@ export default function IntelChipMetric() {
     )
   }
 
-  const value = chip[metricConfig.key] as number
   const color = metricConfig.color
-  const timeline = useMemo(() => makeTimeline(metricConfig.key, value), [metricConfig.key, value])
-  const breakdown = useMemo(() => makeBreakdown(metricConfig.key, value), [metricConfig.key, value])
-  const events = useMemo(() => makeEvents(metricConfig.key), [metricConfig.key])
-  const insights = useMemo(() => makeInsights(metricConfig.key, value), [metricConfig.key, value])
-  const comparison = useMemo(() => makeComparison(metricConfig.key, value), [metricConfig.key, value])
 
   // Other metrics for quick navigation
   const otherMetrics = Object.values(METRIC_MAP).filter(m => m.key !== metricConfig.key)

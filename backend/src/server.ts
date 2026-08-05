@@ -61,7 +61,6 @@ async function loadQueueServices() {
     const { router: queueRouter, inboundQueue } = await import('./queue')
     const { router: chipsRouter } = await import('./chips')
     const { router: schedulerRouter } = await import('./scheduler')
-    const { processInboundMessage } = await import('./james')
     const { handlePersonalJames } = await import('./james-personal')
 
     app.use('/api/chips', chipsRouter)
@@ -113,7 +112,7 @@ async function loadQueueServices() {
     })
 
     logger.info('✅ BullMQ + Redis: workers ativos')
-  } catch (err) {
+  } catch {
     logger.warn('⚠️  BullMQ/Redis offline — WhatsApp desativado. James frontend ativo normalmente.')
   }
 }

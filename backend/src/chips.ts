@@ -4,7 +4,6 @@
 // ============================================================
 import { Router } from 'express'
 import axios from 'axios'
-import { supabase } from './server'
 import { logger } from './logger'
 
 export const router = Router()

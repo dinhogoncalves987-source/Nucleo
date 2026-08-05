@@ -614,7 +614,13 @@ export default function James() {
           if (recorder?.state === 'recording') {
             recorder.ondataavailable = null
             recorder.onstop = null
-            try { recorder.stop() } catch {}
+            try {
+              recorder.stop()
+            } catch (error) {
+              if (!(error instanceof DOMException && error.name === 'InvalidStateError')) {
+                console.warn('[James VAD] Falha ao interromper gravação:', error)
+              }
+            }
           }
         },
         start: () => {
@@ -725,7 +731,17 @@ export default function James() {
     }
 
     const t = setTimeout(loop, 600)
-    return () => { alive = false; clearTimeout(t); try { rec?.stop() } catch {} }
+    return () => {
+      alive = false
+      clearTimeout(t)
+      try {
+        rec?.stop()
+      } catch (error) {
+        if (!(error instanceof DOMException && error.name === 'InvalidStateError')) {
+          console.warn('[James Wake Word] Falha ao interromper reconhecimento:', error)
+        }
+      }
+    }
   }, [summon])
 
   // ── Cleanup on unmount ──────────────────────────────────────────────────

@@ -49,7 +49,6 @@ export async function processInboundMessage(event: EvolutionEvent): Promise<void
     const lead       = leadRes.data
     const chipMapping = chipRes.data
     const tenantId   = chipMapping?.tenant_id ?? lead?.tenant_id ?? 'default'
-    const tenantName = (chipMapping?.tenants as { name?: string } | null)?.name ?? 'O Núcleo'
     const affiliateLink = `https://app.thebeautyhub.com.br/agendar?ref=${instance}`
 
     // Chama o engine central — única fonte de lógica de IA

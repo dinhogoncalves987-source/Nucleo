@@ -2,7 +2,7 @@
 // queue.ts — Filas BullMQ (Outbound + Inbound)
 // Redis-backed, SLA < 30s para inbound (James 24h)
 // ============================================================
-import { Queue, Worker, QueueEvents, Job } from 'bullmq'
+import { Queue, Worker, Job } from 'bullmq'
 import { Router } from 'express'
 import IORedis from 'ioredis'
 import { sendMessageViaChip, pickActiveChip } from './chips'

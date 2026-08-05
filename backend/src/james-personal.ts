@@ -35,6 +35,10 @@ export async function handlePersonalJames(event: {
 
   } catch (err) {
     logger.error('[JAMES PESSOAL] Erro ao processar mensagem', err)
-    try { await sendReply('Tive um problema técnico agora. Pode repetir?') } catch {}
+    try {
+      await sendReply('Tive um problema técnico agora. Pode repetir?')
+    } catch {
+      logger.warn('[JAMES PESSOAL] Falha ao enviar resposta de contingência')
+    }
   }
 }
