@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import {
   Wifi, WifiOff, AlertTriangle, Flame, Thermometer,
-  RefreshCw, Plus, QrCode, Zap, ShieldCheck,
+  RefreshCw, QrCode, Zap, ShieldCheck,
 } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
 

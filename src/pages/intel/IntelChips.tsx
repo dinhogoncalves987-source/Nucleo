@@ -31,6 +31,7 @@ export default function IntelChips() {
       quentes: chips.filter(c => c.status === 'quente').map(c => c.id),
     },
   }
+  void copilotContext
 
   return (
     <AppLayout title="Chips" subtitle="Mapa operacional dos 100 chips">

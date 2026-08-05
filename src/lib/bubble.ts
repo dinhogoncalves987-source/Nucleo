@@ -64,7 +64,7 @@ async function bubbleGet<T>(endpoint: string, params: Record<string, string | nu
   return json.response.results
 }
 
-async function bubblePost<T>(endpoint: string, body: Record<string, unknown>): Promise<{ id: string }> {
+async function bubblePost(endpoint: string, body: Record<string, unknown>): Promise<{ id: string }> {
   const res = await fetch(`${BUBBLE_URL}/obj/${endpoint}`, {
     method: 'POST',
     headers: headers(),
@@ -138,7 +138,7 @@ export const BubbleClientes = {
 
   create: async (data: { nome: string; telefone: string; email?: string; origem?: string }) => {
     const endpoint = _clientesEndpoint ?? 'clientes'
-    return bubblePost<BubbleClient>(endpoint, {
+    return bubblePost(endpoint, {
       nome: data.nome,
       telefone: data.telefone,
       email: data.email ?? '',

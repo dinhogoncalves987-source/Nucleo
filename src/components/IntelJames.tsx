@@ -220,6 +220,7 @@ export default function IntelJames({ context }: { context: JamesContext }) {
   const inputRef = useRef<HTMLInputElement>(null)
   const recognitionRef = useRef<SpeechRecognitionType | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
+  const mountedRef = useRef(true)
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => { if (open && mode !== 'voice') inputRef.current?.focus() }, [open, mode])
@@ -241,8 +242,22 @@ export default function IntelJames({ context }: { context: JamesContext }) {
 
   // Cleanup on unmount
   useEffect(() => {
+    mountedRef.current = true
     return () => {
-      recognitionRef.current?.abort()
+      mountedRef.current = false
+      const recognition = recognitionRef.current
+      if (recognition) {
+        recognition.onresult = null
+        recognition.onerror = null
+        recognition.onend = null
+        try {
+          recognition.abort()
+        } catch {
+          // Recognition may already be stopped.
+        } finally {
+          if (recognitionRef.current === recognition) recognitionRef.current = null
+        }
+      }
       audioRef.current?.pause()
       window.speechSynthesis?.cancel()
     }
@@ -295,27 +310,37 @@ export default function IntelJames({ context }: { context: JamesContext }) {
     if (!recognition) {
       setJState('error')
       addSystemMsg('Microfone não disponível. Use Chrome para reconhecimento de voz.')
-      setTimeout(() => setJState('idle'), 3000)
+      setTimeout(() => {
+        if (mountedRef.current) setJState('idle')
+      }, 3000)
       return
     }
     recognitionRef.current = recognition
     setJState('listening')
 
     recognition.onresult = (event: { results: { item: (i: number) => { item: (j: number) => { transcript: string } }; length: number } }) => {
+      if (!mountedRef.current) return
       const transcript = event.results.item(0).item(0).transcript
       setJState('idle')
       if (transcript.trim()) void processCommand(transcript.trim())
     }
     recognition.onerror = (e: { error: string }) => {
+      if (!mountedRef.current) return
       setJState('error')
       if (e.error === 'not-allowed') {
         addSystemMsg('Permissão de microfone negada. Habilite nas configurações do navegador.')
       } else if (e.error === 'no-speech') {
         addSystemMsg('Nenhuma fala detectada. Tente novamente.')
       }
-      setTimeout(() => setJState('idle'), 2000)
+      setTimeout(() => {
+        if (mountedRef.current) setJState('idle')
+      }, 2000)
     }
-    recognition.onend = () => { if (jState === 'listening') setJState('idle') }
+    recognition.onend = () => {
+      if (!mountedRef.current) return
+      if (recognitionRef.current === recognition) recognitionRef.current = null
+      setJState(state => state === 'listening' ? 'idle' : state)
+    }
     recognition.start()
   }, [jState])
 
@@ -444,7 +469,7 @@ export default function IntelJames({ context }: { context: JamesContext }) {
       logOp(userText, 'info', false, Date.now() - startMs)
       setTimeout(() => setJState('idle'), 2000)
     } finally {
-      if (jState === 'processing') setJState('idle')
+      setJState(state => state === 'processing' ? 'idle' : state)
     }
   }, [jState, context, session, navigate, speakText, addSystemMsg, logOp])
 

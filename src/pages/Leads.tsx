@@ -67,6 +67,8 @@ const VALIDATION_ICON: Record<Lead['validation_status'], React.ReactNode> = {
   invalid: <XCircle size={13} className="text-red-500" />,
   pending: <Clock size={13} className="text-amber-500" />,
 }
+void STATUS_BADGE
+void VALIDATION_ICON
 
 // ─── Component ───────────────────────────────────────────────────────────────
 export default function Leads() {
@@ -123,6 +125,7 @@ export default function Leads() {
   // Insere leads desduplicados por telefone (evita repetidos no banco)
   const insertDeduped = async (candidates: Omit<Lead, 'id' | 'created_at'>[]): Promise<{ inserted: number; skipped: number }> => {
     const phones = candidates.map(l => l.phone.replace(/\D/g, '')).filter(Boolean)
+    void phones
     // Busca telefones já existentes
     const { data: existing } = await supabase
       .from('leads')

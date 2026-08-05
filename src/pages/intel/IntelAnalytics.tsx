@@ -32,6 +32,7 @@ export default function IntelAnalytics() {
       horariosRecuperados: ANALYTICS_DATA[5].data[ANALYTICS_DATA[5].data.length - 1],
     },
   }
+  void copilotContext
 
   return (
     <AppLayout title="Analytics" subtitle="Evolução de aprendizado, canais e performance do sistema">

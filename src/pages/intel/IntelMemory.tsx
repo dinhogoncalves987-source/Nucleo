@@ -23,6 +23,7 @@ export default function IntelMemory() {
       mediaTaxa: Math.round(memories.reduce((a, m) => a + m.taxa, 0) / memories.length),
     },
   }
+  void copilotContext
 
   return (
     <AppLayout title="Memórias" subtitle="Base de conhecimento, histórico, correções e logs do sistema">

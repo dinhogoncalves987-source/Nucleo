@@ -72,6 +72,7 @@ export default function IntelInbox() {
       selectedCliente: selectedItem?.cliente ?? null,
     },
   }
+  void copilotContext
 
   return (
     <AppLayout title="Inbox" subtitle="Interações multicanal — conversas, treino ao vivo e inspeção">

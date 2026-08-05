@@ -32,7 +32,7 @@ const METRIC_MAP: Record<string, MetricConfig> = {
 }
 
 // ── Mock builders for metric detail ───────────────────────────────────────
-function makeTimeline(metric: MetricKey, value: number) {
+function makeTimeline(_metric: MetricKey, value: number) {
   const base = Math.max(20, value - 30)
   return Array.from({ length: 14 }, (_, i) => ({
     day: `${14 - i}d`,
@@ -101,13 +101,13 @@ function makeEvents(metric: MetricKey) {
   }))
 }
 
-function makeInsights(metric: MetricKey, value: number): string[] {
+function makeInsights(_metric: MetricKey, value: number): string[] {
   if (value >= 85) return [`Score de ${value}% está excelente — manter estratégia atual`, 'Chip opera no top 10% da frota', 'Sem ações corretivas necessárias']
   if (value >= 65) return [`Score de ${value}% está bom mas pode melhorar`, `Potencial de +${100 - value}% com ajustes finos`, 'Recomendação: revisar casos de baixa confiança']
   return [`Score de ${value}% está abaixo do ideal`, 'Ação imediata necessária para correção', 'Recomendação: treino intensivo + revisão de memórias']
 }
 
-function makeComparison(metric: MetricKey, value: number) {
+function makeComparison(_metric: MetricKey, value: number) {
   return {
     frota: Math.round(65 + Math.random() * 15),
     melhor: Math.round(90 + Math.random() * 10),
@@ -160,6 +160,7 @@ export default function IntelChipMetric() {
       comparacaoFrota: comparison,
     },
   }
+  void copilotContext
 
   return (
     <AppLayout title={`${chip.id} · ${metricConfig.fullLabel}`} subtitle={`${metricConfig.icon} ${metricConfig.desc}`}>

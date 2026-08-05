@@ -68,6 +68,7 @@ export default function IntelChipDetail() {
       campanhasAtivas: campanhas.filter(c => c.status === 'ativo').length,
     },
   }
+  void copilotContext
 
   return (
     <AppLayout title={chip.id} subtitle={`${chip.nome} · ${chip.estab}`}>

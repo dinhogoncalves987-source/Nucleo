@@ -5,7 +5,7 @@ import { useTenant } from '../contexts/TenantContext'
 import {
   ChevronRight, ChevronLeft, Check, Plus, X, Send,
   Building2, ShoppingBag, GraduationCap, Users, Calendar,
-  Star, MessageSquare, Target, TrendingUp, RefreshCcw,
+  Star, Target, TrendingUp, RefreshCcw,
   MapPin, Zap, Brain, Sparkles, Loader2
 } from 'lucide-react'
 

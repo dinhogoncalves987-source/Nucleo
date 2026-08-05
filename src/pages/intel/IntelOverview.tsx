@@ -53,6 +53,7 @@ export default function IntelOverview() {
       promosPendentes: promos.filter(p => p.status === 'pendente').length,
     },
   }
+  void copilotContext
 
   return (
     <AppLayout title="James Intel" subtitle="Central de Inteligência Operacional — visão geral do sistema">

@@ -26,9 +26,9 @@ type ISpeechRecognition = {
   onstart: (() => void) | null
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   onresult: ((e: any) => void) | null
-  onerror: (() => void) | null
+  onerror: ((event: { error: string }) => void) | null
   onend: (() => void) | null
-  start(): void; stop(): void
+  start(): void; stop(): void; abort(): void
 }
 
 const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined) || ''
@@ -182,6 +182,7 @@ function EnergyGrid({ active }: { active: boolean }) {
     </>
   )
 }
+void EnergyGrid
 
 
 // HibernationOverlay removed — the 3D nucleus handles all visual states
