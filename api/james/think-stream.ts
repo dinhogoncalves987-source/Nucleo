@@ -2,6 +2,7 @@
 // Streaming GPT + TTS chunks via Server-Sent Events
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { buildMessages, addTurnAndSave, saveMemory, openai } from '../_lib/james-engine'
+import type { JamesRequest } from '../_lib/james-engine'
 
 export const config = {
   maxDuration: 60, // Allow up to 60s for streaming (Vercel Pro)
@@ -48,9 +49,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const MIN_CHUNK_LEN = 30
 
   try {
+    const normalizedOrigin: JamesRequest['origin'] =
+      origin === 'whatsapp' || origin === 'personal' ? origin : 'frontend'
     const messages = await buildMessages({
       message, tenant_id,
-      origin: (['frontend', 'whatsapp', 'personal'].includes(origin ?? '') ? origin : 'frontend') as any,
+      origin: normalizedOrigin,
       sessionId: sessionId ?? tenant_id,
     })
 

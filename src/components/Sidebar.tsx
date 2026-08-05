@@ -104,7 +104,7 @@ export default function Sidebar() {
   const toggleMobile = useCallback(() => setMobileOpen(prev => !prev), [])
 
   // Guardar toggle na sidebar para o AppLayout acessar
-  ;(Sidebar as any).__toggleMobile = toggleMobile
+  ;(Sidebar as SidebarComponent).__toggleMobile = toggleMobile
 
   return (
     <>
@@ -368,4 +368,8 @@ export default function Sidebar() {
     </aside>
     </>
   )
+}
+
+export type SidebarComponent = typeof Sidebar & {
+  __toggleMobile?: () => void
 }

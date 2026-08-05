@@ -1,5 +1,6 @@
 import { ReactNode } from 'react'
 import Sidebar, { MobileMenuButton } from './Sidebar'
+import type { SidebarComponent } from './Sidebar'
 import GlobalJames from './GlobalJames'
 import { Bell } from 'lucide-react'
 import { useTenant } from '../contexts/TenantContext'
@@ -9,6 +10,8 @@ interface Props {
   title: string
   subtitle?: string
 }
+
+const sidebarComponent = Sidebar as SidebarComponent
 
 export default function AppLayout({ children, title, subtitle }: Props) {
   const { tenant } = useTenant()
@@ -27,7 +30,7 @@ export default function AppLayout({ children, title, subtitle }: Props) {
         >
           <div className="flex items-center gap-3">
             {/* Hamburger mobile */}
-            <MobileMenuButton onClick={() => (Sidebar as any).__toggleMobile?.()} />
+            <MobileMenuButton onClick={() => sidebarComponent.__toggleMobile?.()} />
             <div>
               <h1
                 className="text-lg md:text-xl font-bold tracking-tight"
@@ -85,4 +88,3 @@ export default function AppLayout({ children, title, subtitle }: Props) {
     </div>
   )
 }
-

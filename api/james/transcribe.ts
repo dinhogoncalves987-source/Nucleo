@@ -12,7 +12,7 @@ export const config = { api: { bodyParser: false } }
 function parseForm(req: VercelRequest): Promise<{ files: Record<string, FormFile | FormFile[]> }> {
   return new Promise((resolve, reject) => {
     const form = new IncomingForm({ maxFileSize: 25 * 1024 * 1024 })
-    form.parse(req as any, (err, _fields, files) => {
+    form.parse(req, (err, _fields, files) => {
       if (err) reject(err)
       else resolve({ files: files as Record<string, FormFile | FormFile[]> })
     })

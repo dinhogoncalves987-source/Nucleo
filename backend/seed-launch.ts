@@ -5,6 +5,11 @@
 import { createClient } from '@supabase/supabase-js'
 import * as fs from 'fs'
 
+interface TenantRow {
+  id: string
+  name: string
+}
+
 async function main() {
   // Carregar variáveis do .env
   let supabaseUrl = process.env.SUPABASE_URL || ''
@@ -88,7 +93,7 @@ async function main() {
 
   // ── 4. Pegar ID do tenant principal ──
   const { data: tenants } = await supabase.from('tenants').select('id, name').order('name')
-  const tenantMap = new Map((tenants ?? []).map((t: any) => [t.name, t.id]))
+  const tenantMap = new Map((tenants ?? []).map((tenant: TenantRow) => [tenant.name, tenant.id]))
   const mainTenantId = tenantMap.get('The Beauty Hub') || (tenants?.[0]?.id ?? null)
 
   if (!mainTenantId) { console.error('❌ Nenhum tenant encontrado'); process.exit(1) }

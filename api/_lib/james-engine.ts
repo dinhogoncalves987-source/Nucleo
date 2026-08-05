@@ -29,6 +29,8 @@ export interface JamesRequest {
 }
 
 interface Memory { input: string; response: string; category: string }
+interface LeadSummary { status: string | null }
+interface FinanceSummary { amount: number | string | null }
 
 // ─── In-memory session cache (lasts per invocation, OK for streaming) ──────
 // In serverless, each invocation is short-lived. We load session from Supabase
@@ -294,9 +296,9 @@ export async function fetchTenantData(tenantId: string): Promise<string> {
     const finances = financesRes.data ?? []
 
     const total     = leads.length
-    const newL      = leads.filter((l: any) => l.status === 'new').length
-    const converted = leads.filter((l: any) => l.status === 'converted').length
-    const totalRev  = finances.reduce((s: number, f: any) => s + Number(f.amount), 0)
+    const newL      = leads.filter((lead: LeadSummary) => lead.status === 'new').length
+    const converted = leads.filter((lead: LeadSummary) => lead.status === 'converted').length
+    const totalRev  = finances.reduce((sum: number, finance: FinanceSummary) => sum + Number(finance.amount), 0)
 
     return `Leads: ${total} total | ${newL} novos | ${converted} convertidos | Faturamento: R$${totalRev.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
   } catch { return '' }
