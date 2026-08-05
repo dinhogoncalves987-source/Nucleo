@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { UserCheck, Plus, Search, Phone, Mail, CheckCircle2, Clock, Star, Pencil, X, Save, Store } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
 import { useTenant } from '../contexts/tenant-context'
@@ -39,24 +39,43 @@ export default function Clientes() {
   const [saving, setSaving] = useState(false)
   const [editId, setEditId] = useState<string | null>(null)
   const [editForm, setEditForm] = useState({ name: '', phone: '', email: '', tenant_origin: '' })
+  const tenantIdRef = useRef(tenant?.id)
+  const contactsRequestRef = useRef(0)
+  tenantIdRef.current = tenant?.id
 
-  useEffect(() => { if (tenant?.id) { fetchData(); fetchTenants() } }, [tenant])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
+    const tenantId = tenantIdRef.current
+    if (!tenantId) return
+    const requestId = ++contactsRequestRef.current
     setLoading(true)
     const { data } = await supabase
       .from('contacts')
       .select('id, name, phone, email, status, source, tenant_origin, created_at')
-      .eq('tenant_id', tenant!.id)
+      .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
+    if (
+      contactsRequestRef.current !== requestId ||
+      tenantIdRef.current !== tenantId
+    ) return
     setItems((data as Cliente[]) ?? [])
     setLoading(false)
-  }
+  }, [])
 
-  const fetchTenants = async () => {
-    const { data } = await supabase.from('tenants').select('id, name').order('name')
-    setTenants((data as TenantOption[]) ?? [])
-  }
+  useEffect(() => {
+    void fetchData()
+    return () => { contactsRequestRef.current += 1 }
+  }, [fetchData, tenant?.id])
+
+  useEffect(() => {
+    let cancelled = false
+    const fetchTenants = async () => {
+      const { data } = await supabase.from('tenants').select('id, name').order('name')
+      if (!cancelled) setTenants((data as TenantOption[]) ?? [])
+    }
+
+    void fetchTenants()
+    return () => { cancelled = true }
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()

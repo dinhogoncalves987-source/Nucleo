@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   TrendingUp, ArrowUpRight, RefreshCw,
   AlertCircle, Users, BarChart3, Zap,
@@ -33,10 +33,14 @@ export default function Dashboard() {
   const [tenantCount, setTenantCount] = useState(1)
   const [loading, setLoading] = useState(true)
   const [isDemo, setIsDemo] = useState(false)
+  const dashboardRequestRef = useRef(0)
+  const dashboardTenantIdRef = useRef(tenant?.id)
+  dashboardTenantIdRef.current = tenant?.id
 
-  useEffect(() => { if (tenant?.id) fetchData() }, [tenant])
-
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
+    const tenantId = dashboardTenantIdRef.current
+    if (!tenantId) return
+    const requestId = ++dashboardRequestRef.current
     setLoading(true)
     setIsDemo(false)
     try {
@@ -44,9 +48,13 @@ export default function Dashboard() {
       const { data: finances } = await supabase
         .from('finances')
         .select('transaction_date, amount, type')
-        .eq('tenant_id', tenant!.id)
+        .eq('tenant_id', tenantId)
         .order('transaction_date', { ascending: true })
 
+      if (
+        dashboardRequestRef.current !== requestId ||
+        dashboardTenantIdRef.current !== tenantId
+      ) return
       if (finances && finances.length > 0) {
         const grouped = groupByMonth(finances as FinanceRow[])
         setBillingData(grouped)
@@ -61,10 +69,18 @@ export default function Dashboard() {
 
       // Count tenants (for SaaS MRR)
       const { count } = await supabase.from('tenants').select('id', { count: 'exact', head: true })
+      if (
+        dashboardRequestRef.current !== requestId ||
+        dashboardTenantIdRef.current !== tenantId
+      ) return
       setTenantCount(count ?? 1)
 
       // Lead funnel
-      const { data: leads } = await supabase.from('leads').select('status').eq('tenant_id', tenant!.id)
+      const { data: leads } = await supabase.from('leads').select('status').eq('tenant_id', tenantId)
+      if (
+        dashboardRequestRef.current !== requestId ||
+        dashboardTenantIdRef.current !== tenantId
+      ) return
       if (leads && leads.length > 0) {
         const counts: LeadCounts = { new: 0, contacted: 0, qualified: 0, converted: 0 }
         leads.forEach(l => { if (l.status in counts) counts[l.status as keyof LeadCounts]++ })
@@ -73,8 +89,18 @@ export default function Dashboard() {
         setLeadCounts({ new: 340, contacted: 210, qualified: 95, converted: 38 })
       }
     } catch (err) { console.error('Dashboard fetch error:', err) }
-    finally { setLoading(false) }
-  }
+    finally {
+      if (
+        dashboardRequestRef.current === requestId &&
+        dashboardTenantIdRef.current === tenantId
+      ) setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    void fetchData()
+    return () => { dashboardRequestRef.current += 1 }
+  }, [fetchData])
 
   const totalLeads = Object.values(leadCounts).reduce((a, b) => a + b, 0) || 1
   const conversionRate = ((leadCounts.converted / totalLeads) * 100).toFixed(1)

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Search, Upload, CheckCircle2, XCircle, Clock, Filter,
   MapPin, Instagram, Trash2, Building2, Phone, Hash,
@@ -109,18 +109,31 @@ export default function Leads() {
 
   // vCard
   const fileRef = useRef<HTMLInputElement>(null)
+  const tenantIdRef = useRef(tenant?.id)
+  const leadsRequestRef = useRef(0)
+  tenantIdRef.current = tenant?.id
 
-  useEffect(() => { if (tenant?.id) fetchLeads() }, [tenant])
-
-  const fetchLeads = async () => {
+  const fetchLeads = useCallback(async () => {
+    const tenantId = tenantIdRef.current
+    if (!tenantId) return
+    const requestId = ++leadsRequestRef.current
     setLoading(true)
     const { data, error } = await supabase
       .from('leads').select('*')
-      .eq('tenant_id', tenant!.id)
+      .eq('tenant_id', tenantId)
       .order('created_at', { ascending: false })
+    if (
+      leadsRequestRef.current !== requestId ||
+      tenantIdRef.current !== tenantId
+    ) return
     if (!error && data) setLeads(data as Lead[])
     setLoading(false)
-  }
+  }, [])
+
+  useEffect(() => {
+    void fetchLeads()
+    return () => { leadsRequestRef.current += 1 }
+  }, [fetchLeads, tenant?.id])
 
   // Insere leads desduplicados por telefone (evita repetidos no banco)
   const insertDeduped = async (candidates: Omit<Lead, 'id' | 'created_at'>[]): Promise<{ inserted: number; skipped: number }> => {
