@@ -6,10 +6,10 @@ import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/AppLayout'
 import {
-  INTEL_CSS, BackButton, Badge, MiniBar, SectionHeader,
-  makeChips, CHIP_STATUS_COLOR, CANAL_ICON,
-  type Chip, colStyle,
+  BackButton, Badge, MiniBar, SectionHeader,
 } from './intel-shared'
+import { makeChips, CHIP_STATUS_COLOR, CANAL_ICON, type Chip } from './intel-data'
+import { INTEL_CSS, colStyle } from './intel-styles'
 
 export default function IntelChipDetail() {
   const { id } = useParams<{ id: string }>()

@@ -6,10 +6,10 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/AppLayout'
 import {
-  INTEL_CSS, BackButton, SectionHeader, MiniBar, Badge,
-  makeChips, CHIP_STATUS_COLOR,
-  type Chip, type ChipStatus, colStyle, tabBtnStyle,
+  BackButton, SectionHeader, MiniBar, Badge,
 } from './intel-shared'
+import { makeChips, CHIP_STATUS_COLOR, type Chip, type ChipStatus } from './intel-data'
+import { INTEL_CSS, colStyle, tabBtnStyle } from './intel-styles'
 
 export default function IntelChips() {
   const navigate = useNavigate()

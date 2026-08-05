@@ -6,12 +6,14 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/AppLayout'
 import {
-  INTEL_CSS, KpiCard, Badge, MiniBar, SectionHeader,
+  KpiCard, Badge, MiniBar, SectionHeader,
+} from './intel-shared'
+import {
   makeChips, makeAgenda, makePromos, makeInitialMetrics,
   CANAL_ICON, CHIP_STATUS_COLOR,
   type Chip, type AgendaOp, type Promotion, type IntelMetrics, type ChipStatus,
-  colStyle, tabBtnStyle,
-} from './intel-shared'
+} from './intel-data'
+import { INTEL_CSS, colStyle, tabBtnStyle } from './intel-styles'
 
 export default function IntelOverview() {
   const navigate = useNavigate()

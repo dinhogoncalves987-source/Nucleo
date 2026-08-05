@@ -5,11 +5,13 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import AppLayout from '../../components/AppLayout'
 import {
-  INTEL_CSS, BackButton, Badge, SectionHeader,
+  BackButton, Badge, SectionHeader,
+} from './intel-shared'
+import {
   makeInbox, CANAL_ICON, STATUS_COLOR,
   type InboxItem, type ChatMsg, type TabKey, type ChannelType,
-  colStyle, secHeadStyle, tabBtnStyle,
-} from './intel-shared'
+} from './intel-data'
+import { INTEL_CSS, colStyle, secHeadStyle, tabBtnStyle } from './intel-styles'
 
 export default function IntelInbox() {
   const [inbox] = useState<InboxItem[]>(makeInbox)

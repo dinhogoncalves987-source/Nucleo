@@ -3,7 +3,8 @@
 // Rota: /intel/analytics
 // ════════════════════════════════════════════════════════════════════════════
 import AppLayout from '../../components/AppLayout'
-import { INTEL_CSS, BackButton, colStyle, SectionHeader, MiniBar } from './intel-shared'
+import { BackButton, SectionHeader, MiniBar } from './intel-shared'
+import { INTEL_CSS, colStyle } from './intel-styles'
 
 const ANALYTICS_DATA = [
   { label: 'Evolução dos chips', data: [42,51,58,63,71,79,84,89], color: '#a78bfa', desc: 'Score médio de aprendizado dos chips ao longo do tempo' },

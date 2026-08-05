@@ -6,10 +6,10 @@ import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import AppLayout from '../../components/AppLayout'
 import {
-  INTEL_CSS, BackButton, Badge, MiniBar, SectionHeader,
-  makeChips, CHIP_STATUS_COLOR,
-  type Chip, colStyle,
+  BackButton, Badge, MiniBar, SectionHeader,
 } from './intel-shared'
+import { makeChips, CHIP_STATUS_COLOR, type Chip } from './intel-data'
+import { INTEL_CSS, colStyle } from './intel-styles'
 
 type MetricKey = 'learn' | 'conv' | 'promo' | 'recov' | 'health' | 'heat'
 

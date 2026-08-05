@@ -5,10 +5,13 @@
 import { useState } from 'react'
 import AppLayout from '../../components/AppLayout'
 import {
-  INTEL_CSS, BackButton, Badge,
-  makeMemories, CLIENTES, CANAIS, CANAL_ICON,
-  type Memory, type BottomTab, colStyle, tabBtnStyle,
+  BackButton, Badge,
 } from './intel-shared'
+import {
+  makeMemories, CLIENTES, CANAIS, CANAL_ICON,
+  type Memory, type BottomTab,
+} from './intel-data'
+import { INTEL_CSS, colStyle, tabBtnStyle } from './intel-styles'
 
 export default function IntelMemory() {
   const [memories] = useState<Memory[]>(makeMemories)
