@@ -18,18 +18,26 @@ export default function AgentConfig() {
   const [saved, setSaved] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => { if (tenant?.id) fetchDocs() }, [tenant])
+  useEffect(() => {
+    const tenantId = tenant?.id
+    if (!tenantId) return
 
-  const fetchDocs = async () => {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from('knowledge_bases')
-      .select('*')
-      .eq('tenant_id', tenant!.id)
-      .order('created_at', { ascending: false })
-    if (!error && data) setDocs(data as KBRow[])
-    setLoading(false)
-  }
+    let cancelled = false
+    const fetchDocs = async () => {
+      setLoading(true)
+      const { data, error } = await supabase
+        .from('knowledge_bases')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('created_at', { ascending: false })
+      if (cancelled) return
+      if (!error && data) setDocs(data as KBRow[])
+      setLoading(false)
+    }
+
+    void fetchDocs()
+    return () => { cancelled = true }
+  }, [tenant?.id])
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]

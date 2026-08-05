@@ -27,19 +27,23 @@ export default function Atendimento() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'todas' | 'ativa' | 'pendente'>('todas')
 
-  useEffect(() => { if (tenant?.id) fetchData() }, [tenant])
+  useEffect(() => {
+    const tenantId = tenant?.id
+    if (!tenantId) return
 
-  const fetchData = async () => {
-    setLoading(true)
-    const { data } = await supabase
+    let cancelled = false
+    const fetchData = async () => {
+      setLoading(true)
+      const { data } = await supabase
       .from('leads')
       .select('id, name, phone, status, created_at')
-      .eq('tenant_id', tenant!.id)
+      .eq('tenant_id', tenantId)
       .in('status', ['new', 'contacted', 'qualified'])
       .order('created_at', { ascending: false })
       .limit(50)
 
-    const mapped: Conversa[] = (data ?? []).map(l => ({
+      if (cancelled) return
+      const mapped: Conversa[] = (data ?? []).map(l => ({
       id: l.id,
       client_name: l.name ?? 'Cliente',
       client_phone: l.phone,
@@ -50,9 +54,13 @@ export default function Atendimento() {
       status: l.status === 'new' ? 'pendente' : 'ativa',
       lead_status: l.status,
     }))
-    setConversas(mapped)
-    setLoading(false)
-  }
+      setConversas(mapped)
+      setLoading(false)
+    }
+
+    void fetchData()
+    return () => { cancelled = true }
+  }, [tenant?.id])
 
   const filtered = conversas.filter(c => {
     const matchSearch = c.client_name.toLowerCase().includes(search.toLowerCase()) ||

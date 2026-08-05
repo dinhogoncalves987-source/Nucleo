@@ -201,24 +201,38 @@ export default function Activations() {
   const [bubbleError, setBubbleError] = useState<string | null>(null)
   const [affiliateLink, setAffiliateLink] = useState<string | undefined>(undefined)
 
-  useEffect(() => { if (tenant?.id) fetchCampaigns() }, [tenant])
+  useEffect(() => {
+    const tenantId = tenant?.id
+    if (!tenantId) return
+
+    let cancelled = false
+    const fetchCampaigns = async () => {
+      setLoading(true)
+      const { data } = await supabase.from('campaigns').select('*')
+        .eq('tenant_id', tenantId).order('created_at', { ascending: false })
+      if (cancelled) return
+      if (data) setCampaigns(data as Campaign[])
+      setLoading(false)
+    }
+
+    void fetchCampaigns()
+    return () => { cancelled = true }
+  }, [tenant?.id])
 
   // Gera link de afiliado do tenant
   useEffect(() => {
-    if (!tenant?.id) return
-    // Gera link de afiliado carimbado para esse tenant
-    getOrCreateAffiliate(tenant.id, tenant.name).then(aff => {
-      if (aff) setAffiliateLink(generateAffiliateLink(aff.slug))
-    })
-  }, [tenant?.id])
+    const tenantId = tenant?.id
+    const tenantName = tenant?.name
+    setAffiliateLink(undefined)
+    if (!tenantId || !tenantName) return
 
-  const fetchCampaigns = async () => {
-    setLoading(true)
-    const { data } = await supabase.from('campaigns').select('*')
-      .eq('tenant_id', tenant!.id).order('created_at', { ascending: false })
-    if (data) setCampaigns(data as Campaign[])
-    setLoading(false)
-  }
+    let cancelled = false
+    // Gera link de afiliado carimbado para esse tenant
+    getOrCreateAffiliate(tenantId, tenantName).then(aff => {
+      if (!cancelled && aff) setAffiliateLink(generateAffiliateLink(aff.slug))
+    })
+    return () => { cancelled = true }
+  }, [tenant?.id, tenant?.name])
 
   const fetchAusentes = async () => {
     setAusentesLoading(true)
