@@ -10,6 +10,7 @@ import { logger } from './logger'
 import { router as jamesRouter } from './routes/james'
 import { router as searchRouter } from './search'
 import { router as asaasRouter, handleAsaasWebhook } from './asaas'
+import { createApiSecretAuth } from './api-secret-auth'
 import axios from 'axios'
 
 const app = express()
@@ -26,15 +27,7 @@ app.use(cors({ origin: '*' }))
 app.use(express.json({ limit: '10mb' }))
 
 // Auth middleware para rotas da API
-app.use('/api', (req, res, next) => {
-  const secret = req.headers['x-api-secret']
-  // If API_SECRET is empty string, allow all (dev mode)
-  if (process.env.API_SECRET && secret !== process.env.API_SECRET) {
-    res.status(401).json({ error: 'Unauthorized' })
-    return
-  }
-  next()
-})
+app.use('/api', createApiSecretAuth(process.env.API_SECRET))
 
 // ── Health check (sem auth) ───────────────────────────────────
 app.get('/health', (_, res) => {
