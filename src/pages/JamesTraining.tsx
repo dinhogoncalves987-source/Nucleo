@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import AppLayout from '../components/AppLayout'
 import { supabase } from '../lib/supabase'
 import { useTenant } from '../contexts/tenant-context'
+import { backendFetch } from '../lib/backend'
 import {
   ChevronRight, ChevronLeft, Check, Plus, X, Send,
   Building2, ShoppingBag, GraduationCap, Users, Calendar,
@@ -52,8 +53,6 @@ interface StepProps {
 // ═══════════════════════════════════════════════════════════════
 // CONSTANTS
 // ═══════════════════════════════════════════════════════════════
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? ''
-const API_SECRET  = import.meta.env.VITE_API_SECRET  ?? ''
 
 const SEGMENT_OPTIONS = [
   { id: 'barbearia', label: 'Barbearia', emoji: '💈' },
@@ -188,97 +187,7 @@ async function syncLearningMemories(tenantId: string, ctx: BusinessContext) {
   return memories.length
 }
 
-// ═══════════════════════════════════════════════════════════════
-// BEAUTY HUB — CONHECIMENTO PROFUNDO (extraído de thebeautyhub.com.br)
-// ═══════════════════════════════════════════════════════════════
-const BEAUTY_HUB_DEEP_KNOWLEDGE = [
-  { category: 'training:identidade', input: 'O que é o The Beauty Hub?',
-    response: 'O The Beauty Hub é um marketplace e sistema de gestão completo dedicado ao setor de Beleza e Bem-Estar. Funciona como plataforma SaaS que conecta profissionais de beleza a clientes, oferecendo agendamento online, gestão financeira, controle de estoque, programa de fidelidade e campanhas automatizadas. É a operação principal da holding XGlobal Partners, fundada por Edson Sena. Site: thebeautyhub.com.br',
-    tags: ['training', 'identidade', 'empresa'] },
-  { category: 'training:missao', input: 'Qual é a missão e visão do The Beauty Hub?',
-    response: 'A missão do The Beauty Hub é transformar a forma como profissionais e clientes de beleza se conectam, valorizando o trabalho de quem transforma vidas através do talento e cuidado. A visão é ser a plataforma referência do mercado de beleza no Brasil, oferecendo uma ferramenta simples, eficiente e humana para impulsionar carreiras e fazer o mercado crescer.',
-    tags: ['training', 'missao', 'visao'] },
-  { category: 'training:proposta', input: 'Qual é a proposta de valor do The Beauty Hub para clientes?',
-    response: 'Para clientes finais, o The Beauty Hub oferece: (1) Encontrar os melhores salões, spas e clínicas próximos, (2) Agendamento online fácil em poucos cliques, (3) Profissionais verificados e avaliados com nota real, (4) Atualizações de disponibilidade em tempo real, (5) Programa de fidelidade com pontos e descontos.',
-    tags: ['training', 'proposta', 'cliente'] },
-  { category: 'training:sistema', input: 'Quais funcionalidades o sistema The Beauty Hub oferece para profissionais?',
-    response: 'Para profissionais e estabelecimentos, o sistema oferece: (1) Agenda Inteligente com agendamento online completo, (2) Notificações Automáticas via WhatsApp para reduzir faltas, (3) Gestão Financeira com controle de fluxo de caixa, entradas, saídas e relatórios gerenciais, (4) Programa de Fidelidade digital com pontos, bônus e descontos, (5) Pacotes de serviços e combos, (6) Relatórios Analíticos com dados para decisão rápida, (7) Personalização da plataforma com cores e identidade do negócio, (8) Fichas de Anamnese digitais para histórico do cliente, (9) Controle de Estoque digital.',
-    tags: ['training', 'sistema', 'funcionalidades'] },
-  { category: 'training:segmentos', input: 'Quais segmentos e categorias de serviço o The Beauty Hub atende?',
-    response: 'O The Beauty Hub atende todos os segmentos do mercado de beleza e bem-estar: Barbearias (Barba e Bigode), Salões de Beleza (Cabelo, Cabelo Afro, Penteados), Spas (Day Spa, Banhos, Ofurô), Clínicas Estéticas (Depilação a Laser, Harmonização), Nail Designers (Manicure, Pedicure), Design de Sobrancelha, Lash Designers (Cílios), Estúdios de Tatuagem, Maquiagem, Massagem e mais. Os serviços mais procurados são: Cortes, Depilação, Manicure, Maquiagem e Massagem.',
-    tags: ['training', 'segmentos', 'categorias'] },
-  { category: 'training:planos', input: 'Quais são os planos e preços do The Beauty Hub?',
-    response: 'O The Beauty Hub oferece: (1) Teste Grátis de 15 dias com todas as funcionalidades premium liberadas, (2) Plano Premium por R$ 59,90/mês — até 6 profissionais, 700 clientes, agendamentos ilimitados, controle financeiro, notificações WhatsApp e suporte completo, (3) Plano Gold por R$ 99,90/mês — profissionais ilimitados, clientes ilimitados, agendamentos ilimitados, controle financeiro, notificações WhatsApp e suporte completo. Promoção: planos anuais ganham 6 meses grátis.',
-    tags: ['training', 'planos', 'precos'] },
-  { category: 'training:contato', input: 'Quais são os dados de contato do The Beauty Hub?',
-    response: 'Contato do The Beauty Hub: Email: contato@thebeauthub.com.br | Telefone/WhatsApp: +55 (54) 9 9110-9276 | Endereço: Av. Júlio de Castilhos, 1226, Caxias do Sul / RS. Site: thebeautyhub.com.br. A empresa está baseada em Caxias do Sul, Rio Grande do Sul, Brasil.',
-    tags: ['training', 'contato', 'endereco'] },
-  { category: 'training:marketplace', input: 'Como funciona o marketplace do The Beauty Hub?',
-    response: 'O marketplace do The Beauty Hub opera em três pilares: (1) Marketplace de Serviços — profissionais listam seus serviços com preços, duração e disponibilidade; clientes agendam online, (2) Marketplace de Produtos — estabelecimentos vendem produtos de beleza (shampoos, pomadas, esmaltes, acessórios) diretamente pela plataforma, (3) Marketplace de Conhecimento — cursos, workshops e eventos de negócios do setor de beleza, incluindo técnicas de corte, colorimetria, gestão de salão e marketing digital.',
-    tags: ['training', 'marketplace', 'servicos'] },
-  { category: 'training:agenda', input: 'Como funciona a agenda inteligente do The Beauty Hub?',
-    response: 'A agenda inteligente do The Beauty Hub permite: agendamento online 24/7 pelo cliente, visualização de disponibilidade em tempo real, notificações automáticas via WhatsApp para confirmar ou lembrar agendamentos (reduz no-show em até 70%), gestão de múltiplos profissionais no mesmo estabelecimento, bloqueio de horários, intervalos configuráveis entre serviços e sincronização automática. O estabelecimento pode usar agenda manual, online ou ambas.',
-    tags: ['training', 'agenda', 'agendamento'] },
-  { category: 'training:financeiro', input: 'Como funciona a gestão financeira no The Beauty Hub?',
-    response: 'A gestão financeira inclui: controle completo de fluxo de caixa, registro de entradas e saídas, relatórios gerenciais por período, análise de receita por profissional e por serviço, comissionamento automático de profissionais, integração com meios de pagamento e visão consolidada de performance do negócio. Os relatórios analíticos transformam dados brutos em insights para decisão rápida.',
-    tags: ['training', 'financeiro', 'gestao'] },
-  { category: 'training:fidelidade', input: 'Como funciona o programa de fidelidade do The Beauty Hub?',
-    response: 'O programa de fidelidade digital do The Beauty Hub funciona com: acúmulo de pontos a cada serviço realizado, bônus por frequência e recorrência, descontos progressivos para clientes fiéis, pacotes de serviços com preço especial, cashback para incentivar retorno. O objetivo não é dar brinde — é aumentar frequência, ticket médio e lifetime value do cliente.',
-    tags: ['training', 'fidelidade', 'cashback'] },
-  { category: 'training:whatsapp', input: 'Como o WhatsApp é usado no The Beauty Hub?',
-    response: 'O WhatsApp é canal central de operação: (1) Notificações automáticas de agendamento (confirmação, lembrete, reagendamento), (2) Campanhas de reativação para clientes inativos, (3) Comunicação direta entre estabelecimento e cliente, (4) Disparo de promoções e ofertas segmentadas, (5) O sistema opera com 100+ chips Evolution API para escala de comunicação via WhatsApp, garantindo entrega e velocidade.',
-    tags: ['training', 'whatsapp', 'comunicacao'] },
-  { category: 'training:campanhas', input: 'Como funcionam as campanhas no The Beauty Hub?',
-    response: 'O sistema de campanhas automatizadas funciona assim: (1) James detecta agenda vazia ou baixa ocupação, (2) Sugere campanha de preenchimento com alvo, mensagem e oferta, (3) Valida com o dono do estabelecimento antes de disparar, (4) Dispara via WhatsApp para a base segmentada, (5) Mede resultado por agendamento gerado, não por clique. Campanhas focam em: reativação de inativos (30-60 dias), preenchimento de baixa ocupação (terça a quinta manhã) e aumento de ticket.',
-    tags: ['training', 'campanhas', 'automacao'] },
-  { category: 'training:modelo_negocio', input: 'Qual é o modelo de receita do The Beauty Hub?',
-    response: 'O modelo de negócio é SaaS B2B2C com múltiplas fontes de receita: (1) Assinatura mensal dos estabelecimentos (Premium R$59,90 ou Gold R$99,90), (2) Comissão sobre transações do marketplace de produtos, (3) Comissão sobre cursos vendidos no marketplace de conhecimento, (4) Campanhas automatizadas premium. O Beauty Hub não cobra por cliente atendido — cobra pela infraestrutura operacional que digitaliza o negócio inteiro.',
-    tags: ['training', 'modelo', 'receita'] },
-  { category: 'training:onboarding', input: 'Como um estabelecimento entra no The Beauty Hub?',
-    response: 'O onboarding é simples: (1) Cadastro gratuito pelo site thebeautyhub.com.br, (2) 15 dias de teste grátis com todas as funcionalidades, (3) Configuração de serviços, profissionais e agenda, (4) Personalização com identidade visual do negócio, (5) Integração com WhatsApp para notificações, (6) Após o trial, escolhe entre Plano Premium ou Gold. O sistema é projetado para profissionais com baixa digitalização — interface simples e suporte completo.',
-    tags: ['training', 'onboarding', 'cadastro'] },
-  { category: 'training:mercado', input: 'Qual é o panorama do mercado de beleza no Brasil?',
-    response: 'O Brasil é o 4º maior mercado de beleza do mundo, com mais de 1,3 milhão de salões de beleza registrados. O setor movimenta mais de R$ 120 bilhões por ano. A grande maioria dos estabelecimentos (85%+) opera sem nenhum sistema digital — agenda em papel, controle financeiro em caderno, comunicação por WhatsApp pessoal. Essa baixa digitalização representa uma oportunidade massiva para o The Beauty Hub: digitalizar, profissionalizar e conectar essa base fragmentada.',
-    tags: ['training', 'mercado', 'oportunidade'] },
-  { category: 'training:diferencial', input: 'Qual é o diferencial competitivo do The Beauty Hub?',
-    response: 'Os diferenciais do The Beauty Hub são: (1) Tudo em um — agenda, financeiro, marketplace, campanhas e fidelidade numa plataforma só, (2) WhatsApp nativo com automação de 100+ chips, (3) Inteligência artificial (James) que analisa dados e sugere ações, (4) Foco no mercado brasileiro com interface em português e suporte local, (5) Preço acessível (a partir de R$59,90/mês), (6) Marketplace triplo (serviços + produtos + conhecimento), (7) Programa de afiliados e parcerias comerciais.',
-    tags: ['training', 'diferencial', 'competitivo'] },
-  { category: 'training:tecnologia', input: 'Qual é a stack tecnológica do The Beauty Hub?',
-    response: 'A plataforma principal (marketplace e gestão) roda em Bubble.io. O sistema operacional interno (O Núcleo) é construído em React + TypeScript + Vite no frontend, Node.js + Express no backend, Supabase (PostgreSQL) como banco de dados, OpenAI GPT-4o-mini como motor de IA do James, Evolution API para integração WhatsApp com 100+ chips, Docker para deploy em VPS. O James (IA) opera como executivo digital com TTS (text-to-speech), STT (speech-to-text via Whisper) e streaming de respostas.',
-    tags: ['training', 'tecnologia', 'stack'] },
-  { category: 'training:escala_mercado', input: 'Qual é a estratégia de escala do The Beauty Hub?',
-    response: 'A estratégia de escala foca em: (1) Aquisição massiva de estabelecimentos via WhatsApp outbound (100+ chips), (2) Trial gratuito de 15 dias para converter, (3) Foco em regiões de classe B/C com alta densidade de salões independentes, (4) Público com baixa digitalização = oportunidade de inclusão digital, (5) Programa de afiliados para crescimento orgânico, (6) Marketplace de conhecimento como canal de aquisição e retenção, (7) Meta de 50+ estabelecimentos na primeira fase piloto.',
-    tags: ['training', 'escala', 'estrategia'] },
-  { category: 'training:inteligencia', input: 'Como a inteligência artificial é usada no The Beauty Hub?',
-    response: 'A IA (James) atua como executivo digital do The Beauty Hub: (1) Analisa dados de agenda, financeiro e clientes em tempo real, (2) Detecta oportunidades (agenda vazia, clientes inativos, baixo ticket), (3) Sugere campanhas e ações comerciais baseadas em dados, (4) Gera mensagens personalizadas para WhatsApp, (5) Responde perguntas sobre o negócio, (6) Interage por voz (STT/TTS) com o Comandante, (7) Aprende continuamente com cada interação e resultado. James não é chatbot — é executivo de operações.',
-    tags: ['training', 'ia', 'james'] },
-  { category: 'training:estabelecimentos', input: 'Quais estabelecimentos já usam o The Beauty Hub?',
-    response: 'Exemplos de estabelecimentos na plataforma incluem: Grazi Balbino (Manicure especializada), Studio Retrô (Colorimetria e técnicas capilares), Jaciara Petersen (Harmonização facial e estética), Ale Pinto (Depilação especializada), entre outros profissionais verificados e avaliados na plataforma.',
-    tags: ['training', 'estabelecimentos', 'parceiros'] },
-  { category: 'training:kpis', input: 'Quais são os principais KPIs do The Beauty Hub?',
-    response: 'Os KPIs centrais são: (1) Número de estabelecimentos ativos na plataforma, (2) Taxa de ocupação de agenda (meta: 85%+), (3) Ticket médio por cliente, (4) Taxa de reativação de clientes inativos, (5) GMV (Gross Merchandise Value) do marketplace, (6) Churn rate dos estabelecimentos (meta: <5%/mês), (7) NPS dos profissionais e clientes, (8) Taxa de no-show (meta: reduzir para <10% com notificações), (9) Receita recorrente mensal (MRR) dos planos.',
-    tags: ['training', 'kpis', 'metricas'] },
-  { category: 'training:holding', input: 'Qual é a relação do The Beauty Hub com a holding XGlobal Partners?',
-    response: 'O The Beauty Hub é a operação principal e piloto validado da holding XGlobal Partners, fundada por Edson Sena (Comandante Supremo). O Núcleo é a camada executiva de operação que centraliza inteligência, dados, campanhas e decisão operacional. Outras operações da holding incluem: Recibo Certo (gestão fiscal para MEIs/autônomos) e a infraestrutura de WhatsApp com 100+ chips via Evolution API.',
-    tags: ['training', 'holding', 'xglobal'] },
-]
-
-async function autoSeedKnowledge(tenantId: string) {
-  // Check if deep knowledge already exists
-  const { data } = await supabase.from('james_memories').select('id').eq('tenant_id', tenantId).eq('category', 'training:identidade').limit(1)
-  if (data && data.length > 0) return // Already seeded
-  
-  // Seed all deep knowledge
-  const rows = BEAUTY_HUB_DEEP_KNOWLEDGE.map(m => ({
-    tenant_id: tenantId, speaker: 'sistema' as const,
-    category: m.category, input: m.input, response: m.response,
-    important: true, tags: m.tags,
-  }))
-  await supabase.from('james_memories').insert(rows)
-  console.log(`[James Training] Auto-seeded ${rows.length} deep knowledge memories`)
-}
-
-// ═══════════════════════════════════════════════════════════════
+// Business knowledge is loaded from the authenticated tenant, never bundled as a global seed.
 // SHARED UI COMPONENTS
 // ═══════════════════════════════════════════════════════════════
 function Toast({ msg, type }: { msg: string; type: 'success' | 'error' }) {
@@ -563,8 +472,8 @@ function Step7({ ctx, tenantId }: StepProps & { tenantId: string }) {
     if (!q.trim() || loading) return
     setLoading(true); setResponse(''); responseRef.current = ''
     try {
-      const res = await fetch(`${BACKEND_URL}/api/james/think-stream`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-secret': API_SECRET },
+      const res = await backendFetch('/api/james/think-stream', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: q, tenant_id: tenantId, origin: 'training-simulation', sessionId: `training-${Date.now()}` }),
         signal: AbortSignal.timeout(30_000),
       })
@@ -704,10 +613,7 @@ export default function JamesTraining() {
       if (data?.[0]?.response) {
         try { const { currentStep, ...saved } = JSON.parse(data[0].response); setCtx(prev => ({ ...prev, ...saved })); setStep(currentStep ?? 1) } catch { /* use defaults */ }
       }
-      // Auto-seed deep knowledge on first load
-      await autoSeedKnowledge(tenantId)
-      // Also sync wizard learning memories
-      await syncLearningMemories(tenantId, BEAUTY_HUB_DEFAULTS)
+      // Opening this page only reads saved state. Writes require an explicit user action.
       setLoading(false)
     }
     void load()

@@ -12,6 +12,8 @@ export interface VerifiedJwtClaims {
 export interface VerifiedAuthIdentity {
   userId: string
   claims: VerifiedJwtClaims
+  tenantId?: string
+  appRole?: 'superadmin' | 'manager' | 'operator'
 }
 
 export type JwtVerificationResult =
@@ -55,6 +57,7 @@ function validatedClaims(value: unknown): VerifiedJwtClaims | null {
     typeof claims.sub !== 'string'
     || !uuidPattern.test(claims.sub)
     || claims.role !== 'authenticated'
+    || claims.is_anonymous === true
     || !hasExpectedAudience
     || typeof claims.exp !== 'number'
     || !Number.isFinite(claims.exp)

@@ -1,130 +1,75 @@
-import { useState, useEffect, ReactNode, useRef } from 'react'
-import type { Session } from '@supabase/supabase-js'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import type { Tenant, User } from '../types'
 import { TenantContext } from './tenant-context'
+import { createIdentityLifecycle, emptyIdentity } from './identity-lifecycle'
 
-// ── Dev Mode: bypass auth in development ──────────────────
-const DEV_MODE = import.meta.env.DEV
-
+const DEV_MODE = import.meta.env.DEV && import.meta.env.VITE_DEV_AUTH_BYPASS === 'true'
 const DEFAULT_TENANT: Tenant = {
   id: '00000000-0000-0000-0000-000000000001',
   name: 'The Beauty Hub',
   created_at: new Date().toISOString(),
 }
-
 const DEV_USER: User = {
-  id: 'dev-superadmin-0000',
-  tenant_id: DEFAULT_TENANT.id,
-  email: 'dev@nucleohub.local',
-  role: 'superadmin',
+  id: 'dev-superadmin-0000', tenant_id: DEFAULT_TENANT.id,
+  email: 'dev@example.invalid', role: 'superadmin',
 }
 
 export function TenantProvider({ children }: { children: ReactNode }) {
-  const [tenant, setTenantState] = useState<Tenant | null>(null)
-  const [user, setUserState] = useState<User | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
-  const [loading, setLoading] = useState(true)
-  const initialized = useRef(false)
+  const [identity, setIdentity] = useState(() => emptyIdentity(true))
+  const lifecycle = useRef<ReturnType<typeof createIdentityLifecycle> | null>(null)
+  const { tenant, user, session, loading } = identity
 
   useEffect(() => {
-    // Guard: run only once even in dev environments
-    if (initialized.current) return
-    initialized.current = true
-
-    let cancelled = false
-
-    const init = async () => {
-      // ── DEV bypass: skip Supabase, log in instantly ──
-      if (DEV_MODE) {
-        console.log('%c🔓 DEV MODE — Auto-login como superadmin', 'color: #00B4FF; font-weight: bold; font-size: 13px')
-        setUserState(DEV_USER)
-        setTenantState(DEFAULT_TENANT)
-        setLoading(false)
-        return
-      }
-
-      try {
-        // Hard timeout: if supabase doesn't respond in 3s, bail out
-        const result = await Promise.race([
-          supabase.auth.getSession(),
-          new Promise<null>(resolve => setTimeout(() => resolve(null), 3000))
-        ])
-
-        if (cancelled) return
-
-        const sess = result && 'data' in result ? result.data.session : null
-
-        if (sess?.user) {
-          setSession(sess)
-          // Set user from session directly (no extra DB query that might fail)
-          setUserState({
-            id: sess.user.id,
-            tenant_id: '00000000-0000-0000-0000-000000000001',
-            email: sess.user.email ?? '',
-            role: 'superadmin',
-          })
-          setTenantState(DEFAULT_TENANT)
-          // Try to enrich with profile data in the background (non-blocking)
-          supabase.from('profiles').select('*').eq('id', sess.user.id).maybeSingle()
-            .then(
-              ({ data }) => { if (data && !cancelled) setUserState({ id: data.id, tenant_id: data.tenant_id, email: data.email, role: data.role }) },
-              () => { /* silently ignore profile errors */ }
-            )
-        }
-      } catch {
-        // Ignore errors — just show login
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
+    if (DEV_MODE) {
+      setIdentity({ session: null, user: DEV_USER, tenant: DEFAULT_TENANT, loading: false })
+      return
     }
-
-    init()
-
-    return () => { cancelled = true }
+    const owner = createIdentityLifecycle({
+      getSession: () => supabase.auth.getSession(),
+      subscribe: callback => {
+        const { data } = supabase.auth.onAuthStateChange(callback)
+        return () => data.subscription.unsubscribe()
+      },
+      profile: async id => {
+        const { data, error } = await supabase.from('profiles')
+          .select('id, tenant_id, email, role').eq('id', id).single()
+        if (error || !data) throw new Error('Perfil de acesso nao encontrado.')
+        return data as User
+      },
+      tenant: async id => {
+        const { data, error } = await supabase.from('tenants')
+          .select('id, name, created_at').eq('id', id).single()
+        if (error || !data) throw new Error('Empresa vinculada nao encontrada.')
+        return data as Tenant
+      },
+      signOut: () => supabase.auth.signOut(),
+    }, setIdentity)
+    lifecycle.current = owner
+    return () => { owner.dispose(); lifecycle.current = null }
   }, [])
 
-  const loginWithSupabase = async (email: string, password: string): Promise<{ error: string | null }> => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-
-    if (error) {
-      if (error.message.includes('Invalid login credentials')) return { error: 'E-mail ou senha incorretos.' }
-      if (error.message.includes('Email not confirmed')) return { error: 'Confirme seu e-mail antes de entrar.' }
-      return { error: error.message }
-    }
-
-    if (data.session) {
-      setSession(data.session)
-      setUserState({
-        id: data.session.user.id,
-        tenant_id: '00000000-0000-0000-0000-000000000001',
-        email: data.session.user.email ?? email,
-        role: 'superadmin',
-      })
-      setTenantState(DEFAULT_TENANT)
-    }
-
-    return { error: null }
+  const loginWithSupabase = async (email: string, password: string) => {
+    const owner = lifecycle.current
+    await owner?.waitForLogout()
+    if (!DEV_MODE && (!owner || lifecycle.current !== owner)) return { error: 'Acesso encerrado. Tente novamente.' }
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
+    if (!error) return { error: null }
+    if (error.message.includes('Invalid login credentials')) return { error: 'E-mail ou senha incorretos.' }
+    if (error.message.includes('Email not confirmed')) return { error: 'Confirme seu e-mail antes de entrar.' }
+    return { error: error.message }
   }
 
   const logout = async () => {
-    await supabase.auth.signOut().catch(() => {})
-    setSession(null)
-    setUserState(null)
-    setTenantState(null)
+    if (DEV_MODE) { setIdentity(emptyIdentity()); return }
+    await lifecycle.current?.logout()
   }
 
-  return (
-    <TenantContext.Provider value={{
-      tenant, user, session,
-      isAuthenticated: DEV_MODE ? !!user : !!session,
-      loading,
-      setTenant: setTenantState,
-      setUser: setUserState,
-      logout,
-      loginWithSupabase,
-    }}>
-      {children}
-    </TenantContext.Provider>
-  )
+  return <TenantContext.Provider value={{
+    tenant, user, session, isAuthenticated: DEV_MODE ? !!user : !!session && !!user && !!tenant,
+    loading,
+    setTenant: next => setIdentity(previous => previous.user ? { ...previous, tenant: next } : previous),
+    setUser: next => setIdentity(previous => previous.user ? { ...previous, user: next } : previous),
+    logout, loginWithSupabase,
+  }}>{children}</TenantContext.Provider>
 }

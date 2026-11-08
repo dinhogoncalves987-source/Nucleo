@@ -5,6 +5,7 @@
 import { Router } from 'express'
 import axios from 'axios'
 import { logger } from './logger'
+import { isDemoMode } from './runtime'
 
 export const router = Router()
 
@@ -95,6 +96,10 @@ export async function sendMessageViaChip(
   phone: string,
   message: string
 ): Promise<boolean> {
+  if (isDemoMode) {
+    logger.info(`[DEMO] Envio simulado via ${chipId} para final ${phone.slice(-4)}`)
+    return true
+  }
   try {
     await evo.post(`/message/sendText/${chipId}`, {
       number: `55${phone.replace(/\D/g, '')}`,

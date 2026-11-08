@@ -8,9 +8,15 @@ import cors from 'cors'
 import { createClient } from '@supabase/supabase-js'
 import { logger } from './logger'
 import { router as jamesRouter } from './routes/james'
+import { conversationRouter } from './routes/james-conversation'
 import { router as searchRouter } from './search'
 import { router as asaasRouter, handleAsaasWebhook } from './asaas'
 import { createApiSecretAuth } from './api-secret-auth'
+import { createSupabaseJwtAuth } from './auth/jwt-auth'
+import { createSupabaseClaimsVerifier } from './auth/supabase-jwt-verifier'
+import { createTenantContext } from './auth/tenant-context'
+import { demoMutationGuard, isDemoMode } from './runtime'
+import { router as integrationsRouter } from './routes/integrations'
 import axios from 'axios'
 
 const app = express()
@@ -23,29 +29,62 @@ export const supabase = createClient(
 )
 
 // ── Middleware ────────────────────────────────────────────────
-app.use(cors({ origin: '*' }))
+const allowedOrigins = (process.env.CORS_ORIGINS ?? 'http://localhost:5173')
+  .split(',').map(value => value.trim()).filter(Boolean)
+app.use(cors({ origin: allowedOrigins, credentials: true }))
 app.use(express.json({ limit: '10mb' }))
 
+const requestBuckets = new Map<string, { count: number; resetAt: number }>()
+app.use('/api', (req, res, next) => {
+  const now = Date.now()
+  const key = req.ip || 'unknown'
+  const bucket = requestBuckets.get(key)
+  if (!bucket || bucket.resetAt <= now) {
+    requestBuckets.set(key, { count: 1, resetAt: now + 60_000 }); next(); return
+  }
+  bucket.count += 1
+  if (bucket.count > 120) { res.status(429).json({ error: 'Muitas requisicoes' }); return }
+  next()
+})
+
 // Auth middleware para rotas da API
-app.use('/api', createApiSecretAuth(process.env.API_SECRET))
+app.use('/api', createSupabaseJwtAuth(createSupabaseClaimsVerifier(supabase.auth)))
+app.use('/api', createTenantContext(supabase))
+app.use(demoMutationGuard)
+app.use('/internal', createApiSecretAuth(process.env.API_SECRET))
 
 // ── Health check (sem auth) ───────────────────────────────────
 app.get('/health', (_, res) => {
   res.json({
     status: 'ok',
+    mode: isDemoMode ? 'demo' : 'production',
     uptime: process.uptime(),
     timestamp: new Date().toISOString(),
   })
 })
 
+app.get('/ready', async (_, res) => {
+  const { error } = await supabase.from('profiles').select('id', { head: true, count: 'exact' }).limit(1)
+  const ready = !error
+  res.status(ready ? 200 : 503).json({
+    status: ready ? 'ready' : 'not_ready', mode: isDemoMode ? 'demo' : 'production',
+    dependencies: { supabase: ready ? 'up' : 'down', redis: 'checked_by_queue_monitor', evolution: isDemoMode ? 'disabled_demo' : 'checked_by_chips_monitor' },
+  })
+})
+
 // ── James API (voz, transcrição, TTS) ────────────────────────
+app.use('/api/james', conversationRouter)
 app.use('/api/james', jamesRouter)
 
 // ── Search API ────────────────────────────────────────────────
 app.use('/api/search', searchRouter)
+app.use('/api/integrations', integrationsRouter)
 
 // ── Asaas webhook ─────────────────────────────────────────────
-app.post('/webhook/asaas', express.json(), handleAsaasWebhook)
+app.post('/webhook/asaas', express.json(), (req, res) => {
+  if (isDemoMode) { res.json({ received: true, simulated: true }); return }
+  void handleAsaasWebhook(req, res)
+})
 app.use('/api/asaas', asaasRouter)
 
 // ── BullMQ + Redis (carrega de forma lazy — não crasha se Redis offline) ──
@@ -63,6 +102,7 @@ async function loadQueueServices() {
     // Webhook Evolution (James WhatsApp inbound)
     app.post('/webhook/evolution', express.json(), async (req, res) => {
       try {
+        if (isDemoMode) { res.json({ received: true, simulated: true }); return }
         const event = req.body
         logger.info('Webhook Evolution recebido', { event: event.event, instance: event.instance })
 

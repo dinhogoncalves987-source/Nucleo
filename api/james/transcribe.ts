@@ -1,5 +1,6 @@
 // Vercel Serverless: POST /api/james/transcribe
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { requireApiAuth } from '../_lib/auth'
 import OpenAI from 'openai'
 import { IncomingForm, File as FormFile } from 'formidable'
 import fs from 'fs'
@@ -20,11 +21,8 @@ function parseForm(req: VercelRequest): Promise<{ files: Record<string, FormFile
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!await requireApiAuth(req, res)) return
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return }
-
-  if (process.env.API_SECRET && req.headers['x-api-secret'] !== process.env.API_SECRET) {
-    res.status(401).json({ error: 'Unauthorized' }); return
-  }
 
   try {
     const { files } = await parseForm(req)

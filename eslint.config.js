@@ -13,6 +13,8 @@ export default tseslint.config(
       'CTempbhub-tmp/**',
       'backend/logs/**',
       'coverage/**',
+      '.validation/**',
+      'tests/evidence/**',
       '**/*.tsbuildinfo',
       'src/vite-env.d.ts',
     ],

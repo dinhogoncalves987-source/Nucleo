@@ -8,3 +8,22 @@ backend/node_modules
 backend/logs
 dist
 *.log
+.validation/
+.env.*
+!.env.example
+!backend/.env.example
+
+supabase/.temp/
+
+# Local validation, browser captures and delivery reports are not application source.
+/tests/evidence/
+/BASE-*.json
+/COPIA-*.json
+/FASE-*.json
+/FASE-*.md
+/VALIDACAO-*.md
+/DIAGNOSTICO-*.md
+/REVISAO-*.md
+/INTEGRACAO-*.md
+*.tsbuildinfo
+/.vercel/

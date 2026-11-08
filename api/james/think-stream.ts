@@ -1,6 +1,7 @@
 // Vercel Serverless: POST /api/james/think-stream
 // Streaming GPT + TTS chunks via Server-Sent Events
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { requireApiAuth } from '../_lib/auth'
 import { buildMessages, addTurnAndSave, saveMemory, openai } from '../_lib/james-engine'
 import type { JamesRequest } from '../_lib/james-engine'
 
@@ -9,11 +10,8 @@ export const config = {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!await requireApiAuth(req, res)) return
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return }
-
-  if (process.env.API_SECRET && req.headers['x-api-secret'] !== process.env.API_SECRET) {
-    res.status(401).json({ error: 'Unauthorized' }); return
-  }
 
   const { message, tenant_id, origin, sessionId } = req.body as {
     message: string; tenant_id: string; origin?: string; sessionId?: string

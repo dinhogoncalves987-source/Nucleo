@@ -12,8 +12,6 @@ services:
     image: redis:7-alpine
     container_name: bhub_redis
     restart: always
-    ports:
-      - "6379:6379"
     volumes:
       - redis_data:/data
     command: redis-server --save 60 1 --loglevel warning
@@ -72,14 +70,16 @@ services:
   # ── Backend Node.js (API + Scheduler + James) ────────────────
   backend:
     build:
-      context: ./backend
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: bhub_backend
     restart: always
     ports:
       - "3001:3001"
     environment:
       - NODE_ENV=production
+      - DEMO_MODE=${DEMO_MODE:-true}
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:5173}
       - PORT=3001
       - REDIS_URL=redis://redis:6379
       - EVOLUTION_API_URL=http://evolution:8080
@@ -87,6 +87,9 @@ services:
       - SUPABASE_URL=${SUPABASE_URL}
       - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - JAMES_MEMORY_ENABLED=${JAMES_MEMORY_ENABLED:-false}
+      - JAMES_OPENAI_ENABLED=${JAMES_OPENAI_ENABLED:-false}
+      - OPENAI_MODEL=${OPENAI_MODEL:-}
       - API_SECRET=${API_SECRET}
       - SCHEDULER_START_HOUR=8
       - SCHEDULER_END_HOUR=18

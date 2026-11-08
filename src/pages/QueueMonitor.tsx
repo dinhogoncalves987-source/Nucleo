@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { RefreshCw, Clock, CheckCircle2, XCircle, AlertTriangle, Layers, Activity } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
-
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? ''
-const API_SECRET  = import.meta.env.VITE_API_SECRET  ?? ''
+import { backendFetch } from '../lib/backend'
 
 interface QueueStats {
   outbound: Record<string, number>
@@ -31,12 +29,11 @@ export default function QueueMonitor() {
     activeRequestRef.current?.abort()
     const controller = new AbortController()
     activeRequestRef.current = controller
-    const headers = { 'x-api-secret': API_SECRET }
     setLoading(true)
     try {
       const [sRes, jRes] = await Promise.all([
-        fetch(`${BACKEND_URL}/api/queue/stats`, { headers, signal: controller.signal }),
-        fetch(`${BACKEND_URL}/api/queue/jobs/${activeQueue}`, { headers, signal: controller.signal }),
+        backendFetch('/api/queue/stats', { signal: controller.signal }),
+        backendFetch(`/api/queue/jobs/${activeQueue}`, { signal: controller.signal }),
       ])
       const [nextStats, nextJobs] = await Promise.all([
         sRes.ok ? (sRes.json() as Promise<QueueStats>) : Promise.resolve(null),

@@ -1,13 +1,11 @@
 // Vercel Serverless: POST /api/james/intel-think
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { requireApiAuth } from '../_lib/auth'
 import { openai } from '../_lib/james-engine'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  if (!await requireApiAuth(req, res)) return
   if (req.method !== 'POST') { res.status(405).json({ error: 'Method not allowed' }); return }
-
-  if (process.env.API_SECRET && req.headers['x-api-secret'] !== process.env.API_SECRET) {
-    res.status(401).json({ error: 'Unauthorized' }); return
-  }
 
   const { message, systemPrompt } = req.body as {
     message?: string; systemPrompt?: string

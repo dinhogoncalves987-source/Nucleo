@@ -3,12 +3,12 @@
  * App: thebeautyhub.com.br
  */
 
-const BUBBLE_URL   = '/bubble-api/api/1.1'
-const BUBBLE_TOKEN = import.meta.env.VITE_BUBBLE_API_TOKEN ?? ''
+import { backendFetch } from './backend'
+
+const BUBBLE_URL = '/api/integrations/bubble'
 
 const headers = () => ({
   'Content-Type': 'application/json',
-  'Authorization': `Bearer ${BUBBLE_TOKEN}`,
 })
 
 // ---------------------------------------------------------------------------
@@ -57,7 +57,7 @@ async function bubbleGet<T>(endpoint: string, params: Record<string, string | nu
   const url = new URL(`${BUBBLE_URL}/obj/${endpoint}`, base)
   Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, String(v)))
 
-  const res = await fetch(url.toString(), { headers: headers() })
+  const res = await backendFetch(`${url.pathname}${url.search}`, { headers: headers() })
   if (!res.ok) throw new Error(`Bubble GET ${endpoint} failed: ${res.status}`)
 
   const json: BubbleResponse<T> = await res.json()
@@ -65,7 +65,7 @@ async function bubbleGet<T>(endpoint: string, params: Record<string, string | nu
 }
 
 async function bubblePost(endpoint: string, body: Record<string, unknown>): Promise<{ id: string }> {
-  const res = await fetch(`${BUBBLE_URL}/obj/${endpoint}`, {
+  const res = await backendFetch(`${BUBBLE_URL}/obj/${endpoint}`, {
     method: 'POST',
     headers: headers(),
     body: JSON.stringify(body),
@@ -78,7 +78,7 @@ async function bubblePost(endpoint: string, body: Record<string, unknown>): Prom
 }
 
 async function bubblePatch(endpoint: string, id: string, body: Record<string, unknown>): Promise<void> {
-  const res = await fetch(`${BUBBLE_URL}/obj/${endpoint}/${id}`, {
+  const res = await backendFetch(`${BUBBLE_URL}/obj/${endpoint}/${id}`, {
     method: 'PATCH',
     headers: headers(),
     body: JSON.stringify(body),
@@ -95,8 +95,9 @@ const CANDIDATE_AGENDAMENTO = ['agendamento','Agendamento','agendamentos','Agend
 async function tryEndpoint(name: string): Promise<boolean> {
   const base = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173'
   try {
-    const res = await fetch(
-      new URL(`${BUBBLE_URL}/obj/${name}?limit=1`, base).toString(),
+    const candidate = new URL(`${BUBBLE_URL}/obj/${name}?limit=1`, base)
+    const res = await backendFetch(
+      `${candidate.pathname}${candidate.search}`,
       { headers: headers() }
     )
     return res.ok
@@ -195,7 +196,7 @@ export const BubbleAgendamentos = {
 export const BubbleWorkflows = {
   /** Dispara um workflow no Bubble via API */
   trigger: async (workflowName: string, params: Record<string, unknown> = {}) => {
-    const res = await fetch(`${BUBBLE_URL}/wf/${workflowName}`, {
+    const res = await backendFetch(`${BUBBLE_URL}/wf/${workflowName}`, {
       method: 'POST',
       headers: headers(),
       body: JSON.stringify(params),
@@ -211,7 +212,7 @@ export const BubbleWorkflows = {
 
 export const bubbleHealthCheck = async (): Promise<boolean> => {
   try {
-    const res = await fetch(`${BUBBLE_URL}/meta`, {
+    const res = await backendFetch(`${BUBBLE_URL}/meta`, {
       headers: headers(),
     })
     // Meta retorna 200 quando o Workflow API está ativo
@@ -227,7 +228,7 @@ export const bubbleHealthCheck = async (): Promise<boolean> => {
 
 export const bubbleDataApiStatus = async (): Promise<{ enabled: boolean; types: string[] }> => {
   try {
-    const res = await fetch(`${BUBBLE_URL}/obj/clientes?limit=1`, { headers: headers() })
+    const res = await backendFetch(`${BUBBLE_URL}/obj/clientes?limit=1`, { headers: headers() })
     if (res.ok) return { enabled: true, types: ['clientes'] }
     return { enabled: false, types: [] }
   } catch {

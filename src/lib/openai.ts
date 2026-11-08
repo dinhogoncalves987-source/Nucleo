@@ -3,15 +3,13 @@
  * As chamadas sensiveis passam pelo backend para evitar uso direto de API key no navegador.
  */
 
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined) || ''
-const API_SECRET  = (import.meta.env.VITE_API_SECRET  as string | undefined) || ''
+import { backendFetch } from './backend'
 
 async function postToBackend<T>(path: string, body: object): Promise<T> {
-  const res = await fetch(`${BACKEND_URL}${path}`, {
+  const res = await backendFetch(path, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-api-secret': API_SECRET,
     },
     body: JSON.stringify(body),
   })

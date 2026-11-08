@@ -7,7 +7,14 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:james": "node --test tests/conversation.test.mjs",
+    "test:memory": "python tests/run-memory-postgres.py",
+    "validate:local": "node --test tests/identity-lifecycle.test.mjs tests/dashboard-data.test.mjs tests/lead-intake.test.mjs tests/conversation.test.mjs tests/operation-gate.test.mjs tests/session-pointer.test.mjs tests/memory-close.test.mjs",
+    "validate:commercial:offline": "node --test tests/offline-lead-qualification.test.mjs tests/offline-campaign-preview.test.mjs",
+    "validate:lead-import": "node --test tests/lead-source-file.test.mjs tests/lead-import-client.test.mjs tests/lead-import-migration-static.test.mjs",
+    "validate:lead-guards": "node --test tests/lead-operations.test.mjs tests/lead-guards.test.mjs",
+    "validate:public-search": "node --test tests/public-search-backend.test.mjs tests/public-search-client.test.mjs tests/public-search-contract.test.mjs tests/public-search-http.test.mjs tests/public-search-runtime.test.mjs"
   },
   "dependencies": {
     "@react-three/drei": "^9.117.3",

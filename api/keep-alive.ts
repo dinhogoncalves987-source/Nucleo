@@ -3,7 +3,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 
-export default async function handler(_req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const expected = process.env.CRON_SECRET
+  if (!expected || req.headers.authorization !== `Bearer ${expected}`) {
+    res.status(401).json({ error: 'Unauthorized' }); return
+  }
   const supabase = createClient(
     process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '',
     process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || ''

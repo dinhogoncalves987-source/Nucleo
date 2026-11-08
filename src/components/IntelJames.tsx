@@ -4,6 +4,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { backendFetch } from '../lib/backend'
 
 // ── Types ─────────────────────────────────────────────────────────────────
 interface JamesMessage {
@@ -46,8 +47,6 @@ interface OpLog {
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? ''
-const API_SECRET  = import.meta.env.VITE_API_SECRET  ?? ''
 
 const PAGE_LABELS: Record<JamesContext['page'], string> = {
   overview: 'Visão Geral Intel', chips: 'Lista de Chips',
@@ -203,6 +202,7 @@ export default function IntelJames({ context }: { context: JamesContext }) {
   const [jState, setJState] = useState<JamesState>('idle')
   const [mode, setMode] = useState<InteractionMode>('both')
   const [voiceEnabled, setVoiceEnabled] = useState(true)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   // Session context
   const [session, setSession] = useState<SessionContext>({
@@ -221,6 +221,7 @@ export default function IntelJames({ context }: { context: JamesContext }) {
   const recognitionRef = useRef<SpeechRecognitionType | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const mountedRef = useRef(true)
+  const listeningTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
   useEffect(() => { if (open && mode !== 'voice') inputRef.current?.focus() }, [open, mode])
@@ -258,6 +259,7 @@ export default function IntelJames({ context }: { context: JamesContext }) {
           if (recognitionRef.current === recognition) recognitionRef.current = null
         }
       }
+      if (listeningTimeoutRef.current) clearTimeout(listeningTimeoutRef.current)
       audioRef.current?.pause()
       window.speechSynthesis?.cancel()
     }
@@ -274,36 +276,52 @@ export default function IntelJames({ context }: { context: JamesContext }) {
 
   // ── TTS ─────────────────────────────────────────────────────────────────
   const speakText = useCallback(async (text: string) => {
-    if (!voiceEnabled || mode === 'text') return
-    const voiceText = shortenForVoice(text)
+    if (!voiceEnabled) return
+    const speakNatively = () => new Promise<void>((resolve) => {
+      if (!('speechSynthesis' in window)) { resolve(); return }
+      window.speechSynthesis.cancel()
+      const utterance = new SpeechSynthesisUtterance(text)
+      const voices = window.speechSynthesis.getVoices()
+      utterance.voice = voices.find(voice => voice.lang.toLowerCase() === 'pt-br')
+        ?? voices.find(voice => voice.lang.toLowerCase().startsWith('pt'))
+        ?? null
+      utterance.lang = 'pt-BR'
+      utterance.rate = 1.05
+      const timeout = window.setTimeout(() => { window.speechSynthesis.cancel(); resolve() }, 45_000)
+      utterance.onend = () => { window.clearTimeout(timeout); resolve() }
+      utterance.onerror = () => { window.clearTimeout(timeout); resolve() }
+      window.speechSynthesis.speak(utterance)
+    })
+
     setJState('speaking')
     try {
-      const res = await fetch(`${BACKEND_URL}/api/james/tts`, {
+      const res = await backendFetch('/api/james/tts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-secret': API_SECRET },
-        body: JSON.stringify({ text: voiceText, voice: 'onyx' }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text, voice: 'onyx' }),
+        signal: AbortSignal.timeout(30_000),
       })
-      if (!res.ok) throw new Error('TTS failed')
+      if (!res.ok) throw new Error('TTS indisponivel')
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
-      const audio = new Audio(url)
-      audioRef.current = audio
-      audio.onended = () => { setJState('idle'); URL.revokeObjectURL(url) }
-      audio.onerror = () => { setJState('idle'); URL.revokeObjectURL(url) }
-      await audio.play()
+      await new Promise<void>((resolve, reject) => {
+        const audio = new Audio(url)
+        audioRef.current = audio
+        const timeout = window.setTimeout(() => { audio.pause(); reject(new Error('Timeout do audio')) }, 45_000)
+        const finish = () => { window.clearTimeout(timeout); URL.revokeObjectURL(url); resolve() }
+        audio.onended = finish
+        audio.onerror = () => { window.clearTimeout(timeout); URL.revokeObjectURL(url); reject(new Error('Audio invalido')) }
+        audio.play().catch(reject)
+      })
     } catch {
-      setJState('idle')
-      if ('speechSynthesis' in window) {
-        const utter = new SpeechSynthesisUtterance(voiceText)
-        utter.lang = 'pt-BR'; utter.rate = 1.1
-        utter.onend = () => setJState('idle')
-        setJState('speaking')
-        window.speechSynthesis.speak(utter)
-      }
+      await speakNatively()
+    } finally {
+      if (mountedRef.current) setJState('idle')
     }
-  }, [voiceEnabled, mode])
-
+  }, [voiceEnabled])
   const stopListening = useCallback(() => {
+    if (listeningTimeoutRef.current) clearTimeout(listeningTimeoutRef.current)
+    listeningTimeoutRef.current = null
     recognitionRef.current?.stop()
     setJState('idle')
   }, [])
@@ -339,8 +357,10 @@ export default function IntelJames({ context }: { context: JamesContext }) {
   }, [addSystemMsg])
 
   // ── Process command ─────────────────────────────────────────────────────
-  const processCommand = useCallback(async (userText: string) => {
+  const submitCommand = useCallback(async (userText: string) => {
     if (!userText.trim() || jState === 'processing') return
+    setErrorMessage(null)
+    setOpen(true)
 
     const startMs = Date.now()
     const { type: intent, navTarget } = classifyIntent(userText)
@@ -400,16 +420,18 @@ export default function IntelJames({ context }: { context: JamesContext }) {
     // ── INFORMATIVE: send to AI ───────────────────────────────────────────
     setJState('processing')
     try {
-      const res = await fetch(`${BACKEND_URL}/api/james/intel-think`, {
+      const res = await backendFetch('/api/james/intel-think', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-secret': API_SECRET },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: userText.trim(),
           systemPrompt: buildSystemPrompt(context, session),
         }),
+        signal: AbortSignal.timeout(100_000),
       })
-      const data = await res.json()
-      const reply = data.reply || 'Sem resposta do servidor.'
+      const data = await res.json() as { reply?: string; error?: string }
+      if (!res.ok || !data.reply?.trim()) throw new Error(data.error || 'Resposta inválida do servidor')
+      const reply = data.reply.trim()
       const responseMs = Date.now() - startMs
 
       const jMsg: JamesMessage = {
@@ -421,10 +443,14 @@ export default function IntelJames({ context }: { context: JamesContext }) {
       setMessages(m => [...m, jMsg])
       setSession(s => ({ ...s, lastReply: reply }))
       logOp(userText, 'info', true, responseMs)
-      void speakText(reply)
-    } catch {
+      await speakText(reply)
+    } catch (error) {
       setJState('error')
-      addSystemMsg('Erro ao conectar com o backend.')
+      const message = error instanceof DOMException && error.name === 'AbortError'
+        ? 'O James demorou mais de 100 segundos. Tente novamente.'
+        : error instanceof Error ? error.message : 'Erro ao conectar com o backend.'
+      setErrorMessage(message)
+      addSystemMsg(message)
       logOp(userText, 'info', false, Date.now() - startMs)
       setTimeout(() => setJState('idle'), 2000)
     } finally {
@@ -449,11 +475,16 @@ export default function IntelJames({ context }: { context: JamesContext }) {
 
     recognition.onresult = (event: { results: { item: (i: number) => { item: (j: number) => { transcript: string } }; length: number } }) => {
       if (!mountedRef.current) return
-      const transcript = event.results.item(0).item(0).transcript
-      setJState('idle')
-      if (transcript.trim()) void processCommand(transcript.trim())
+      const transcript = event.results.item(0).item(0).transcript.trim()
+      if (listeningTimeoutRef.current) clearTimeout(listeningTimeoutRef.current)
+      listeningTimeoutRef.current = null
+      recognition.onresult = null
+      try { recognition.stop() } catch { /* reconhecimento já encerrado */ }
+      if (transcript) void submitCommand(transcript)
     }
     recognition.onerror = (e: { error: string }) => {
+      if (listeningTimeoutRef.current) clearTimeout(listeningTimeoutRef.current)
+      listeningTimeoutRef.current = null
       if (!mountedRef.current) return
       setJState('error')
       if (e.error === 'not-allowed') {
@@ -466,12 +497,22 @@ export default function IntelJames({ context }: { context: JamesContext }) {
       }, 2000)
     }
     recognition.onend = () => {
+      if (listeningTimeoutRef.current) clearTimeout(listeningTimeoutRef.current)
+      listeningTimeoutRef.current = null
       if (!mountedRef.current) return
       if (recognitionRef.current === recognition) recognitionRef.current = null
       setJState(state => state === 'listening' ? 'idle' : state)
     }
     recognition.start()
-  }, [jState, addSystemMsg, processCommand])
+    listeningTimeoutRef.current = setTimeout(() => {
+      if (recognitionRef.current !== recognition) return
+      try { recognition.stop() } catch { /* reconhecimento já encerrado */ }
+      recognitionRef.current = null
+      setErrorMessage('Nenhuma fala foi concluída em 20 segundos. Use o campo de texto ou tente novamente.')
+      setJState('error')
+      setTimeout(() => { if (mountedRef.current) setJState('idle') }, 2500)
+    }, 20_000)
+  }, [jState, addSystemMsg, submitCommand])
 
   // ── Mode labels ─────────────────────────────────────────────────────────
   const modeLabels: Record<InteractionMode, string> = { both: 'Voz + Texto', voice: 'Só Voz', text: 'Só Texto' }
@@ -488,6 +529,7 @@ export default function IntelJames({ context }: { context: JamesContext }) {
   }
 
   const currentState = stateConfig[jState]
+  const textContingencyAvailable = true
 
   return (
     <>
@@ -607,7 +649,7 @@ export default function IntelJames({ context }: { context: JamesContext }) {
           <div style={{ padding: '6px 12px', display: 'flex', gap: 6, borderBottom: '1px solid rgba(0,180,255,0.08)' }}>
             {QUICK_ACTIONS.map(action => (
               <button key={action.label}
-                onClick={() => void processCommand(action.prompt)}
+                onClick={() => void submitCommand(action.prompt)}
                 disabled={jState === 'processing'}
                 style={{
                   flex: 1, padding: '5px 6px', borderRadius: 6, fontSize: 10,
@@ -694,6 +736,15 @@ export default function IntelJames({ context }: { context: JamesContext }) {
               </div>
             ))}
 
+            {errorMessage && (
+              <div role="alert" style={{
+                padding: '8px 10px', borderRadius: 8, fontSize: 11,
+                color: '#fecaca', background: 'rgba(239,68,68,0.1)',
+                border: '1px solid rgba(239,68,68,0.3)',
+              }}>
+                {errorMessage}
+              </div>
+            )}
             {/* Processing indicator */}
             {jState === 'processing' && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 0' }}>
@@ -756,10 +807,10 @@ export default function IntelJames({ context }: { context: JamesContext }) {
                 </button>
               )}
 
-              {mode !== 'voice' && (
+              {textContingencyAvailable && (
                 <input ref={inputRef} value={input}
                   onChange={e => setInput(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && void processCommand(input)}
+                  onKeyDown={e => e.key === 'Enter' && void submitCommand(input)}
                   placeholder={jState === 'listening' ? 'Ouvindo...' : jState === 'confirming' ? 'Diga "confirmar" ou "cancelar"' : 'Pergunte ao James...'}
                   disabled={jState === 'processing' || jState === 'listening'}
                   style={{
@@ -771,14 +822,14 @@ export default function IntelJames({ context }: { context: JamesContext }) {
                 />
               )}
 
-              {mode === 'voice' && (
+              {!textContingencyAvailable && (
                 <div style={{ flex: 1, textAlign: 'center', fontSize: 11, color: 'rgba(0,180,255,0.4)' }}>
                   {jState === 'listening' ? '🎤 Ouvindo...' : jState === 'speaking' ? '🔊 James falando...' : jState === 'confirming' ? '⚠️ Confirme por voz' : 'Pressione o mic'}
                 </div>
               )}
 
-              {mode !== 'voice' && (
-                <button onClick={() => void processCommand(input)}
+              {textContingencyAvailable && (
+                <button onClick={() => void submitCommand(input)}
                   disabled={jState === 'processing' || !input.trim()}
                   style={{
                     padding: '8px 12px', borderRadius: 8, fontSize: 13,
@@ -787,7 +838,7 @@ export default function IntelJames({ context }: { context: JamesContext }) {
                     color: '#00B4FF', cursor: jState === 'processing' ? 'wait' : 'pointer',
                     opacity: !input.trim() ? 0.3 : 1, transition: 'all 0.15s',
                   }}>
-                  ➤
+                  Enviar
                 </button>
               )}
             </div>

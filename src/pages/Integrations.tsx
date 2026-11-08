@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { Plug, Eye, EyeOff, Save, CheckCircle2, RefreshCw, Users, Calendar, Bot } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
 import { useTenant } from '../contexts/tenant-context'
-import { supabase } from '../lib/supabase'
+import { backendFetch } from '../lib/backend'
 import { bubbleHealthCheck, BubbleClientes, BubbleAgendamentos } from '../lib/bubble'
 import { checkOpenAIKey } from '../lib/openai'
 
@@ -75,20 +75,17 @@ export default function Integrations() {
     let cancelled = false
     const fetchKeys = async () => {
       setLoading(true)
-      const { data } = await supabase.from('api_keys').select('*').eq('tenant_id', tenantId)
+      const response = await backendFetch('/api/integrations')
+      const data = response.ok ? await response.json() as Array<{
+        service_name: string; webhook_url?: string; configured: boolean
+      }> : []
       if (cancelled) return
-      if (data?.length) {
+      if (data.length) {
         setIntegrations(prev => prev.map(integ => {
           const found = data.find(d => d.service_name === integ.service)
-          return found ? { ...integ, apiKey: found.api_key, webhookUrl: found.webhook_url ?? '' } : integ
+          return found ? { ...integ, apiKey: '•••••••••••• (configurada no backend)', webhookUrl: found.webhook_url ?? '' } : integ
         }))
       }
-      // Pre-fill Bubble token from env
-      setIntegrations(prev => prev.map(i =>
-        i.service === 'bubble' && !i.apiKey
-          ? { ...i, apiKey: import.meta.env.VITE_BUBBLE_API_TOKEN ?? '' }
-          : i
-      ))
       setLoading(false)
     }
 
@@ -110,13 +107,12 @@ export default function Integrations() {
 
   const handleSave = async (integ: IntegrationState) => {
     // Don't save the masked placeholder to Supabase
-    const keyToSave = integ.apiKey.includes('●●●') ? '' : integ.apiKey
-    await supabase.from('api_keys').upsert({
-      tenant_id: tenant!.id,
-      service_name: integ.service,
-      api_key: keyToSave,
-      webhook_url: integ.webhookUrl || null,
-    }, { onConflict: 'tenant_id,service_name' })
+    const keyToSave = integ.apiKey.includes('configurada no backend') ? '' : integ.apiKey
+    if (!keyToSave) return
+    await backendFetch(`/api/integrations/${integ.service}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apiKey: keyToSave, webhookUrl: integ.webhookUrl }),
+    })
 
     setSavedService(integ.service)
     setTimeout(() => setSavedService(null), 2500)

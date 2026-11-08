@@ -1,0 +1,65 @@
+[
+  {
+    "artifactId": "a",
+    "tenantId": "A",
+    "leadId": "lead-a",
+    "sha256": "67f0e04b3b904e05d1036b3d700ba77b824c0d9553b32bb187225f749a04c1d4",
+    "observedAt": 100,
+    "expiresAt": 2000,
+    "synthetic": true
+  },
+  {
+    "artifactId": "b",
+    "tenantId": "B",
+    "leadId": "lead-b",
+    "sha256": "ad909b15b9b8bb322b9224205316122c42cb7cdc2b176caffb4bd2e31aba294f",
+    "observedAt": 100,
+    "expiresAt": 2000,
+    "synthetic": true
+  },
+  {
+    "artifactId": "missing",
+    "tenantId": "A",
+    "leadId": "lead-missing",
+    "sha256": "5e8f7dcaa7ddf6574d3f0c944dc12e022b624c4b2e1d8d4e24ccefb8ffec8c1c",
+    "observedAt": 100,
+    "expiresAt": 2000,
+    "synthetic": true
+  },
+  {
+    "artifactId": "old",
+    "tenantId": "A",
+    "leadId": "lead-old",
+    "sha256": "61760528dfe5a4d5f6b2612b8b97edbf6b13ade1416d7e9a533f92276b94bd57",
+    "observedAt": 100,
+    "expiresAt": 900,
+    "synthetic": true
+  },
+  {
+    "artifactId": "c1",
+    "tenantId": "A",
+    "leadId": "lead-conflict",
+    "sha256": "bcb7bf332e69b6ce3f64966b03426e0003ee8c516b6f642c9bf1b442884909f8",
+    "observedAt": 100,
+    "expiresAt": 2000,
+    "synthetic": true
+  },
+  {
+    "artifactId": "c2",
+    "tenantId": "A",
+    "leadId": "lead-conflict",
+    "sha256": "51dadba183aef736e244de67b96a10bee512e069c7cb2ba3ae5225796621a67b",
+    "observedAt": 100,
+    "expiresAt": 2000,
+    "synthetic": true
+  },
+  {
+    "artifactId": "outside",
+    "tenantId": "A",
+    "leadId": "lead-outside",
+    "sha256": "b7d6e0d5b49011d38f8e5bb83895bb4eb254a0497ea1114e9d1aebfe44e872d6",
+    "observedAt": 100,
+    "expiresAt": 2000,
+    "synthetic": true
+  }
+]

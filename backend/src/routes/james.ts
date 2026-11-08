@@ -9,6 +9,7 @@ import multer from 'multer'
 import OpenAI from 'openai'
 import { handleJamesRequest, clearSession, getSessionInfo, buildMessages, addTurnPublic, saveMemory } from '../services/james-engine'
 import { logger } from '../logger'
+import { BankerUnavailableError, createBankerClient } from '../services/banker-client'
 
 export const router = Router()
 
@@ -165,15 +166,20 @@ router.post('/intel-think', async (req, res) => {
   }
 
   try {
-    const reply = await completeText([
-      { role: 'system', content: systemPrompt || 'Você é James, um assistente executivo digital.' },
-      { role: 'user', content: message.trim() },
-    ], { max_tokens: 300, temperature: 0.7 })
+    const prompt = [
+      `INSTRUCOES DO SISTEMA:\n${systemPrompt || 'Voce e James, um assistente executivo digital.'}`,
+      `MENSAGEM DO USUARIO:\n${message.trim()}`,
+    ].join('\n\n')
+    const reply = (await createBankerClient().chat(prompt)).resposta
 
-    logger.info(`[INTEL-THINK] "${message.trim().slice(0, 50)}" → ${reply.length} chars`)
+    logger.info('[INTEL-THINK] Banker respondeu com sucesso')
     res.json({ reply })
   } catch (err) {
-    logger.error('[INTEL-THINK] Error:', err)
+    if (err instanceof BankerUnavailableError) {
+      logger.warn('[INTEL-THINK] Banker indisponivel')
+      res.status(503).json({ error: 'Servico de IA temporariamente indisponivel.' }); return
+    }
+    logger.error('[INTEL-THINK] Erro interno')
     res.status(500).json({ error: 'Erro ao processar.' })
   }
 })
@@ -213,14 +219,6 @@ router.post('/think-stream', async (req, res) => {
     res.status(400).json({ error: 'message e tenant_id sao obrigatorios' }); return
   }
 
-  res.set({
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-    'X-Accel-Buffering': 'no',
-  })
-  res.flushHeaders()
-
   const sendEvent = (payload: object) => {
     res.write(`data: ${JSON.stringify(payload)}\n\n`)
   }
@@ -250,16 +248,18 @@ router.post('/think-stream', async (req, res) => {
       sessionId: sessionId ?? tenant_id,
     })
 
-    const stream = await openai.chat.completions.create({
-      model: 'gpt-4o-mini',
-      temperature: 0.6,
-      max_tokens: 200,
-      stream: true,
-      messages,
-    })
+    const bankerPrompt = messages.map(item => `${item.role.toUpperCase()}:\n${item.content}`).join('\n\n')
+    const fullText = (await createBankerClient().chat(bankerPrompt)).resposta
 
-    let buffer = ''
-    let fullText = ''
+    res.set({
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    })
+    res.flushHeaders()
+
+    let buffer = fullText
     let chunkIdx = 0
     const ttsQueue: Promise<void>[] = []
 
@@ -274,22 +274,13 @@ router.post('/think-stream', async (req, res) => {
       ttsQueue.push(p)
     }
 
-    for await (const chunk of stream) {
-      const token = chunk.choices[0]?.delta?.content ?? ''
-      if (!token) continue
-      buffer += token
-      fullText += token
-
-      if (buffer.length >= MIN_CHUNK_LEN && SENTENCE_END.test(buffer)) {
-        const match = buffer.search(/[.!?]\s[A-ZÁÉÍÓÚÀÂÊÔÃÕÇ"'a-z]/)
-        if (match !== -1) {
-          const sentence = buffer.slice(0, match + 1).trim()
-          buffer = buffer.slice(match + 2)
-          flushChunk(sentence)
-        }
-      }
+    while (buffer.length >= MIN_CHUNK_LEN && SENTENCE_END.test(buffer)) {
+      const match = buffer.search(/[.!?]\s/)
+      if (match === -1) break
+      const sentence = buffer.slice(0, match + 1).trim()
+      buffer = buffer.slice(match + 2)
+      flushChunk(sentence)
     }
-
     if (buffer.trim()) flushChunk(buffer.trim())
 
     await Promise.all(ttsQueue)
@@ -301,9 +292,13 @@ router.post('/think-stream', async (req, res) => {
     sendEvent({ type: 'done', fullText: fullText.trim() })
     res.end()
   } catch (err) {
-    logger.error('[JAMES STREAM] Erro', err)
-    sendEvent({ type: 'error', message: 'Erro interno no streaming' })
-    res.end()
+    if (err instanceof BankerUnavailableError && !res.headersSent) {
+      logger.warn('[JAMES STREAM] Banker indisponivel')
+      res.status(503).json({ error: 'Servico de IA temporariamente indisponivel.' }); return
+    }
+    logger.error('[JAMES STREAM] Erro interno')
+    if (res.headersSent) { sendEvent({ type: 'error', message: 'Erro interno no streaming' }); res.end() }
+    else res.status(500).json({ error: 'Erro interno no streaming' })
   }
 })
 

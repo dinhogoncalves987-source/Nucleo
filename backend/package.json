@@ -1,12 +1,14 @@
 {
   "name": "bhub-backend",
   "version": "1.0.0",
-  "description": "The Beauty Hub OS — Backend de Produção (100 Chips + James 24h)",
+  "description": "The Beauty Hub OS \u2014 Backend de Produ\u00e7\u00e3o (100 Chips + James 24h)",
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "test": "tsx --test tests/*.test.ts",
+    "start": "node dist/server.js",
+    "start:conversation": "node src/conversation-server.cjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

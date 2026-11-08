@@ -4,10 +4,9 @@ import {
   RefreshCw, QrCode, Zap, ShieldCheck,
 } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
+import { backendFetch } from '../lib/backend'
 
 // URL do backend VPS (configurada em .env.local como VITE_BACKEND_URL)
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL ?? ''
-const API_SECRET  = import.meta.env.VITE_API_SECRET  ?? ''
 
 interface Chip {
   id: string
@@ -46,12 +45,11 @@ export default function ChipsMonitor() {
     activeRequestRef.current?.abort()
     const controller = new AbortController()
     activeRequestRef.current = controller
-    const headers = { 'x-api-secret': API_SECRET, 'Content-Type': 'application/json' }
     setLoading(true)
     try {
       const [chipsRes, schedRes] = await Promise.all([
-        fetch(`${BACKEND_URL}/api/chips`, { headers, signal: controller.signal }),
-        fetch(`${BACKEND_URL}/api/scheduler/status`, { headers, signal: controller.signal }),
+        backendFetch('/api/chips', { signal: controller.signal }),
+        backendFetch('/api/scheduler/status', { signal: controller.signal }),
       ])
       if (chipsRes.ok) {
         const data = await chipsRes.json()

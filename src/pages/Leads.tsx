@@ -3,13 +3,18 @@ import {
   Search, Upload, CheckCircle2, XCircle, Clock, Filter,
   MapPin, Instagram, Trash2, Building2, Phone, Hash,
   Zap, Sparkles, Copy, CheckSquare, Square,
-  Flame, Thermometer, Snowflake, ExternalLink, RefreshCw, ShieldCheck, StopCircle,
+  ExternalLink, RefreshCw, ShieldCheck, StopCircle,
 } from 'lucide-react'
 import AppLayout from '../components/AppLayout'
+import LeadFileImportPanel from '../components/LeadFileImportPanel'
+import PublicLeadSearchPanel from '../components/PublicLeadSearchPanel'
 import { useTenant } from '../contexts/tenant-context'
 import { supabase } from '../lib/supabase'
 import { generateBatchMessages } from '../lib/openai'
 import type { Lead } from '../types'
+import { LEAD_CAPTURE_AVAILABLE, LEAD_CAPTURE_BLOCK_REASON, persistLeadBatch, whatsappRecipientNumber } from '../lib/lead-intake'
+import type { LeadIntakeOrigin } from '../lib/lead-intake'
+import { LEAD_CONTACT_AVAILABLE, LEAD_CONTACT_BLOCK_REASON, mutateLeadRecords, MutationFailure, pendingLeadMutationKey, readPendingLeadMutation, withLeadMutationReservation } from '../lib/lead-operations'
 
 // ─── DDD lookup ──────────────────────────────────────────────────────────────
 const DDD_MAP: Record<string, string> = {
@@ -48,11 +53,12 @@ function generatePhone(ddd: string, i: number): string {
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type TabId = 'maps' | 'instagram' | 'cnpj' | 'vcard'
-type Temperature = 'all' | 'cold' | 'warm' | 'hot'
+type TabId = 'public' | 'maps' | 'instagram' | 'cnpj' | 'vcard'
+type Temperature = 'all' | 'unknown'
+const MUTATION_RECOVERY_WARNING = 'Existe uma alteracao pendente ou incerta desta empresa neste navegador. Novas alteracoes ficam bloqueadas ate conferir seu resultado; nao repita a operacao.'
 
 const TEMP_BY_SOURCE: Record<string, Temperature> = {
-  maps: 'cold', instagram: 'warm', csv: 'hot', manual: 'hot',
+  maps: 'unknown', instagram: 'unknown', csv: 'unknown', manual: 'unknown', inbound_whatsapp: 'unknown',
 }
 
 const STATUS_BADGE: Record<Lead['status'], string> = {
@@ -72,7 +78,12 @@ void VALIDATION_ICON
 
 // ─── Component ───────────────────────────────────────────────────────────────
 export default function Leads() {
-  const { tenant } = useTenant()
+  const { tenant, user } = useTenant()
+  return <TenantLeads key={(tenant?.id ?? 'no-tenant') + ':' + (user?.id ?? 'no-user')} />
+}
+
+function TenantLeads() {
+  const { tenant, user } = useTenant()
   const [leads, setLeads] = useState<Lead[]>([])
   const [loading, setLoading] = useState(true)
   const [query, setQuery] = useState('')
@@ -97,6 +108,11 @@ export default function Leads() {
   const [scraping, setScraping] = useState(false)
   const [scraperError, setScraperError] = useState('')
   const [clearingLeads, setClearingLeads] = useState(false)
+  const [mutating, setMutating] = useState(false)
+  const [mutationBlocked, setMutationBlocked] = useState(false)
+  const [loadError, setLoadError] = useState('')
+  const [loadNotice, setLoadNotice] = useState('')
+  const mutationBusyRef = useRef(false)
 
   // Instagram
   const [igTarget, setIgTarget] = useState('')
@@ -108,51 +124,87 @@ export default function Leads() {
   const [cnpjScraping, setCnpjScraping] = useState(false)
 
   // vCard
-  const fileRef = useRef<HTMLInputElement>(null)
   const tenantIdRef = useRef(tenant?.id)
   const leadsRequestRef = useRef(0)
+  const mountedRef = useRef(false)
   tenantIdRef.current = tenant?.id
 
   const fetchLeads = useCallback(async () => {
     const tenantId = tenantIdRef.current
-    if (!tenantId) return
+    if (!tenantId || !mountedRef.current || mutationBusyRef.current) return
     const requestId = ++leadsRequestRef.current
+    const isCurrent = () => mountedRef.current && leadsRequestRef.current === requestId && tenantIdRef.current === tenantId
     setLoading(true)
-    const { data, error } = await supabase
-      .from('leads').select('*')
-      .eq('tenant_id', tenantId)
-      .order('created_at', { ascending: false })
-    if (
-      leadsRequestRef.current !== requestId ||
-      tenantIdRef.current !== tenantId
-    ) return
-    if (!error && data) setLeads(data as Lead[])
-    setLoading(false)
+    try {
+      const { data, error, count } = await supabase.from('leads').select('*', { count: 'exact' })
+        .eq('tenant_id', tenantId).order('created_at', { ascending: false })
+      if (!isCurrent()) return
+      if (error || !Array.isArray(data) || data.some(row => !row || row.tenant_id !== tenantId)) {
+        setLoadError('Nao foi possivel carregar os cadastros desta empresa. A lista anterior foi preservada; nenhuma operacao foi confirmada.')
+        return
+      }
+      setLeads(data as Lead[]); setLoadError('')
+      setLoadNotice(typeof count === 'number' && count > data.length ? 'Mostrando ' + data.length + ' de ' + count + ' cadastros. Exclusao em lote afeta somente os cadastros carregados.' : '')
+    } catch {
+      if (isCurrent()) setLoadError('Falha ao consultar os cadastros. A lista anterior foi preservada. Tente atualizar a leitura.')
+    } finally { if (isCurrent()) setLoading(false) }
   }, [])
 
   useEffect(() => {
+    mountedRef.current = true
     void fetchLeads()
-    return () => { leadsRequestRef.current += 1 }
+    return () => { mountedRef.current = false; cadStopRef.current = true; leadsRequestRef.current += 1 }
   }, [fetchLeads, tenant?.id])
 
+  const syncMutationState = useCallback(() => {
+    if (!mountedRef.current) return
+    try {
+      const tenantId = tenantIdRef.current
+      if (!tenantId || !user?.id || !navigator.locks) throw new Error('Alteracoes indisponiveis: identidade e reserva segura entre abas sao obrigatorias.')
+      const pending = readPendingLeadMutation(window.localStorage, pendingLeadMutationKey(tenantId), tenantId)
+      setMutationBlocked(Boolean(pending))
+      setScraperError(previous => pending ? MUTATION_RECOVERY_WARNING : previous === MUTATION_RECOVERY_WARNING ? '' : previous)
+    } catch {
+      setMutationBlocked(true)
+      setScraperError('Nao foi possivel conferir a reserva local de alteracoes. Nenhuma nova alteracao sera enviada.')
+    }
+  }, [user?.id])
+
+  useEffect(() => {
+    syncMutationState()
+    const storageChanged = (event: StorageEvent) => {
+      if (event.key !== null && event.key !== pendingLeadMutationKey(tenantIdRef.current ?? 'no-tenant')) return
+      syncMutationState()
+    }
+    const locallySettled = (event: Event) => {
+      const detail = (event as CustomEvent<{ tenantId: string; settled: boolean }>).detail
+      if (detail?.tenantId !== tenantIdRef.current) return
+      syncMutationState()
+      if (detail.settled && !mutationBusyRef.current) void fetchLeads()
+    }
+    window.addEventListener('storage', storageChanged)
+    window.addEventListener('nucleo-lead-mutation-changed', locallySettled)
+    return () => {
+      window.removeEventListener('storage', storageChanged)
+      window.removeEventListener('nucleo-lead-mutation-changed', locallySettled)
+    }
+  }, [syncMutationState, fetchLeads])
+
   // Insere leads desduplicados por telefone (evita repetidos no banco)
-  const insertDeduped = async (candidates: Omit<Lead, 'id' | 'created_at'>[]): Promise<{ inserted: number; skipped: number }> => {
-    const phones = candidates.map(l => l.phone.replace(/\D/g, '')).filter(Boolean)
-    void phones
-    // Busca telefones já existentes
-    const { data: existing } = await supabase
-      .from('leads')
-      .select('phone')
-      .eq('tenant_id', tenant!.id)
-    const existingPhones = new Set((existing ?? []).map((l: { phone: string }) => l.phone.replace(/\D/g, '')))
-    const fresh = candidates.filter(l => !existingPhones.has(l.phone.replace(/\D/g, '')))
-    if (fresh.length > 0) await supabase.from('leads').insert(fresh)
-    return { inserted: fresh.length, skipped: candidates.length - fresh.length }
+  const insertDeduped = (candidates: Omit<Lead, 'id' | 'created_at'>[], origin: LeadIntakeOrigin) => {
+    const tenantId = tenantIdRef.current
+    return persistLeadBatch({
+      origin, tenantId, candidates,
+      isCurrentTenant: () => mountedRef.current && tenantIdRef.current === tenantId,
+      readExisting: id => supabase.from('leads').select('phone', { count: 'exact' }).eq('tenant_id', id),
+      insert: rows => supabase.from('leads').insert(rows),
+    })
   }
 
   // ── Maps Scraper ────────────────────────────────────────────────────────────
   // SIMULATION: o scraping abaixo ainda nao consulta fontes externas reais
   const handleMapsScrape = async () => {
+    if (!LEAD_CAPTURE_AVAILABLE) { setScraperError(LEAD_CAPTURE_BLOCK_REASON); return }
     if (!scraperNiche.trim()) {
       setScraperError('Preencha o campo Nicho antes de buscar.')
       return
@@ -185,7 +237,7 @@ export default function Leads() {
       status: 'new' as const,
       validation_status: 'pending' as const,
     }))
-    const { inserted, skipped } = await insertDeduped(newLeads)
+    const { inserted, skipped } = await insertDeduped(newLeads, 'simulated-capture')
     await fetchLeads()
     if (skipped > 0) setScraperError(`✅ ${inserted} leads inseridos, ${skipped} duplicados ignorados.`)
     setScraping(false)
@@ -193,6 +245,7 @@ export default function Leads() {
 
   // ── Instagram Sniper ────────────────────────────────────────────────────────
   const handleIgScrape = async () => {
+    if (!LEAD_CAPTURE_AVAILABLE) { setScraperError(LEAD_CAPTURE_BLOCK_REASON); return }
     if (!igTarget.trim()) return
     setIgScraping(true)
     await new Promise(r => setTimeout(r, 1800)) // SIMULATION: simula scraping
@@ -212,7 +265,7 @@ export default function Leads() {
       status: 'new' as const,
       validation_status: 'pending' as const,
     }))
-    const { inserted, skipped } = await insertDeduped(newLeads)
+    const { inserted, skipped } = await insertDeduped(newLeads, 'simulated-capture')
     await fetchLeads()
     if (inserted > 0 || skipped === 0) setIgTarget('')
     if (skipped > 0) setIgTarget(`${inserted} inseridos, ${skipped} já existem`)
@@ -221,6 +274,7 @@ export default function Leads() {
 
   // ── Radar CNPJ ──────────────────────────────────────────────────────────────
   const handleCnpjScrape = async () => {
+    if (!LEAD_CAPTURE_AVAILABLE) { setScraperError(LEAD_CAPTURE_BLOCK_REASON); return }
     if (!cnpjCnae || !cnpjCity) return
     setCnpjScraping(true)
     await new Promise(r => setTimeout(r, 2000)) // SIMULATION: simula consulta Receita
@@ -239,7 +293,7 @@ export default function Leads() {
       status: 'new' as const,
       validation_status: 'pending' as const,
     }))
-    const { inserted, skipped } = await insertDeduped(newLeads)
+    const { inserted, skipped } = await insertDeduped(newLeads, 'simulated-capture')
     await fetchLeads()
     if (inserted > 0) { setCnpjCnae(''); setCnpjCity('') }
     if (skipped > 0) console.info(`CNPJ: ${skipped} leads duplicados ignorados`)
@@ -247,44 +301,65 @@ export default function Leads() {
   }
 
   // ── vCard Import ────────────────────────────────────────────────────────────
-  const handleVcard = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const text = await file.text()
-    const vcards = text.split('BEGIN:VCARD').slice(1)
-    const parsed = vcards.map(vc => {
-      const name = (vc.match(/FN:(.+)/)?.[1] ?? vc.match(/N:([^;]+)/)?.[1] ?? 'Contato importado').trim()
-      const phone = (vc.match(/TEL[^:]*:(.+)/)?.[1] ?? '').trim().replace(/\D/g, '')
-      const formatted = phone ? `(${phone.slice(0, 2)}) 9 ${phone.slice(2, 6)}-${phone.slice(6, 10)}` : ''
-      return { tenant_id: tenant!.id, name, phone: formatted || '(11) 9 0000-0000', source: 'csv' as const, status: 'new' as const, validation_status: 'pending' as const }
-    }).filter(l => l.name)
 
-    if (parsed.length) {
-      const { inserted, skipped } = await insertDeduped(parsed)
-      await fetchLeads()
-      if (skipped > 0) console.info(`vCard: ${inserted} inseridos, ${skipped} duplicados ignorados`)
+  // ── CRUD ────────────────────────────────────────────────────────────────────
+  const changeLeadRecords = async (kind: 'delete' | 'status', ids: string[], status?: Lead['status']) => {
+    const tenantId = tenantIdRef.current
+    const isCurrent = () => mountedRef.current && tenantIdRef.current === tenantId
+    if (mutationBusyRef.current || mutationBlocked || !tenantId || !user?.id || !isCurrent()) return
+    if (!ids.length || ids.some(id => !leads.some(lead => lead.id === id && lead.tenant_id === tenantId))) {
+      setScraperError('Selecao de cadastros desatualizada. Atualize a lista antes de alterar.'); return
+    }
+    mutationBusyRef.current = true; setMutating(true); setScraperError('')
+    leadsRequestRef.current++
+    let settled = false
+    try {
+      const result = await withLeadMutationReservation({
+        storage: window.localStorage, locks: navigator.locks, tenantId, userId: user.id,
+        requestId: crypto.randomUUID(), kind, ids, status,
+        work: () => mutateLeadRecords({
+          kind, tenantId, ids, status, isCurrent,
+          execute: request => {
+            const query = request.kind === 'delete'
+              ? supabase.from('leads').delete()
+              : supabase.from('leads').update({ status: request.status })
+            return query.eq('tenant_id', request.tenantId).in('id', request.ids).select('id,tenant_id,status')
+          },
+        }),
+      })
+      settled = true
+      if (!isCurrent()) return
+      if (kind === 'delete') {
+        setLeads(previous => previous.filter(lead => !result.ids.includes(lead.id)))
+        setSelected(previous => new Set([...previous].filter(id => !result.ids.includes(id))))
+      } else setLeads(previous => previous.map(lead => result.ids.includes(lead.id) ? { ...lead, status: status! } : lead))
+    } catch (error) {
+      settled = error instanceof MutationFailure && error.settled
+      if (!isCurrent()) return
+      setScraperError(error instanceof MutationFailure ? error.message : 'Resultado da alteracao incerto. Confira o banco antes de repetir.')
+      if (!(error instanceof MutationFailure) || error.outcome === 'uncertain') setMutationBlocked(true)
+    } finally {
+      if (isCurrent()) { mutationBusyRef.current = false; setMutating(false); setClearingLeads(false); setLoading(false); syncMutationState() }
+      if (!isCurrent()) window.dispatchEvent(new CustomEvent('nucleo-lead-mutation-changed', { detail: { tenantId, settled } }))
     }
   }
 
-  // ── CRUD ────────────────────────────────────────────────────────────────────
   const handleDelete = async (id: string) => {
-    await supabase.from('leads').delete().eq('id', id)
-    setLeads(prev => prev.filter(l => l.id !== id))
-    setSelected(prev => { const s = new Set(prev); s.delete(id); return s })
+    if (mutationBusyRef.current || mutationBlocked) return
+    if (!window.confirm('Excluir este cadastro? Esta acao nao remove recibos e registros de origem da importacao e nao pode ser desfeita nesta tela.')) return
+    await changeLeadRecords('delete', [id])
   }
 
   const handleClearAll = async () => {
-    if (!window.confirm(`Deletar TODOS os ${leads.length} leads do banco? Esta ação não pode ser desfeita.`)) return
+    if (mutationBusyRef.current || mutationBlocked || !leads.length) return
+    const ids = leads.map(lead => lead.id)
+    if (!window.confirm('Excluir somente os ' + ids.length + ' cadastros carregados desta empresa? Recibos e registros de origem da importacao permanecem. Esta acao nao pode ser desfeita nesta tela.')) return
     setClearingLeads(true)
-    await supabase.from('leads').delete().eq('tenant_id', tenant!.id)
-    setLeads([])
-    setSelected(new Set())
-    setClearingLeads(false)
+    await changeLeadRecords('delete', ids)
   }
 
   const handleStatusChange = async (id: string, status: Lead['status']) => {
-    await supabase.from('leads').update({ status }).eq('id', id)
-    setLeads(prev => prev.map(l => l.id === id ? { ...l, status } : l))
+    await changeLeadRecords('status', [id], status)
   }
 
   // ── Selection ───────────────────────────────────────────────────────────────
@@ -300,6 +375,7 @@ export default function Leads() {
 
   // ── Blitz Campaign + Cadenciador de Segurança ─────────────────────────────
   const handleBlitz = async () => {
+    if (!LEAD_CONTACT_AVAILABLE) { setScraperError(LEAD_CONTACT_BLOCK_REASON); return }
     const targets = leads.filter(l => selected.has(l.id))
     if (!targets.length) return
     setBlitzing(true)
@@ -316,6 +392,8 @@ export default function Leads() {
   // SIMULATION: dispara links wa.me no navegador; nao usa fila real nem envio automatizado do backend
   // Cadenciador: dispara links wa.me sequencialmente com delay aleatorio anti-ban
   const handleCadenciadoBlitz = async () => {
+    if (!LEAD_CONTACT_AVAILABLE) { setScraperError(LEAD_CONTACT_BLOCK_REASON); return }
+    if (!mountedRef.current) return
     const targets = leads.filter(l => selected.has(l.id) && blitzResults[l.name])
     if (!targets.length) return
     setCadActive(true)
@@ -323,13 +401,15 @@ export default function Leads() {
     setCadFired(0)
 
     for (let i = 0; i < targets.length; i++) {
-      if (cadStopRef.current) break
+      if (cadStopRef.current || !mountedRef.current) break
       const lead = targets[i]
       const msg = blitzResults[lead.name] ?? `Olá, ${lead.name}! 💅`
-      const phone = `55${lead.phone.replace(/\D/g, '')}`
+      const phone = whatsappRecipientNumber(lead.phone)
+      if (!phone) { setScraperError('Contato sem telefone em formato valido; abertura ignorada.'); continue }
       const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`
 
       setCadCurrentLead(lead.name)
+      if (!LEAD_CONTACT_AVAILABLE) { setScraperError(LEAD_CONTACT_BLOCK_REASON); break }
       window.open(url, '_blank')
       setCadFired(i + 1)
 
@@ -337,7 +417,7 @@ export default function Leads() {
         // Delay aleatório entre cadMinDelay e cadMaxDelay segundos
         const delay = (cadMinDelay + Math.random() * (cadMaxDelay - cadMinDelay)) | 0
         for (let s = delay; s > 0; s--) {
-          if (cadStopRef.current) break
+          if (cadStopRef.current || !mountedRef.current) break
           setCadCountdown(s)
           await new Promise(r => setTimeout(r, 1000))
         }
@@ -357,6 +437,7 @@ export default function Leads() {
 
   // ─── Render ───────────────────────────────────────────────────────────────
   const tabs: { id: TabId; label: string; icon: React.ReactNode; color: string }[] = [
+    { id: 'public', label: 'Busca publica', icon: <Search size={14} />, color: 'var(--accent)' },
     { id: 'maps',      label: 'Maps',            icon: <MapPin size={14} />,     color: 'var(--accent)' },
     { id: 'instagram', label: 'Instagram Sniper', icon: <Instagram size={14} />, color: '#7c3aed' },
     { id: 'cnpj',      label: 'Radar CNPJ',       icon: <Building2 size={14} />, color: '#f59e0b' },
@@ -364,15 +445,19 @@ export default function Leads() {
   ]
 
   const tempFilters: { id: Temperature; label: string; icon: React.ReactNode; color: string }[] = [
-    { id: 'all',  label: 'Todos',         icon: <Filter size={12} />,       color: 'var(--text-muted)' },
-    { id: 'cold', label: 'Frio (Maps)',   icon: <Snowflake size={12} />,    color: '#60a5fa' },
-    { id: 'warm', label: 'Morno (IG)',    icon: <Thermometer size={12} />,  color: '#a78bfa' },
-    { id: 'hot',  label: 'Quente',        icon: <Flame size={12} />,        color: '#f97316' },
+    { id: 'all', label: 'Todos', icon: <Filter size={12} />, color: 'var(--text-muted)' },
+    { id: 'unknown', label: 'Sem avaliacao', icon: <Clock size={12} />, color: 'var(--text-muted)' },
   ]
 
   return (
     <AppLayout title="O Predador 🐙" subtitle="Central multifontes de prospecção — Maps · Instagram · CNPJ · vCard">
       <div className="flex flex-col gap-4">
+        <p role="status" className="text-sm">{LEAD_CAPTURE_BLOCK_REASON} Importacao de arquivo nao comprova numero ativo nem autoriza contato.</p>
+        <p className="text-sm">{LEAD_CONTACT_BLOCK_REASON}</p>
+        {scraperError && <p role="alert" className="text-sm">{scraperError}</p>}
+        {loadError && <p role="alert" className="text-sm">{loadError}</p>}
+        {loadNotice && <p role="status" className="text-sm">{loadNotice}</p>}
+        {mutationBlocked && <p role="alert" className="text-sm">Novas alteracoes bloqueadas nesta tela ate conferir o resultado incerto no banco. Atualizar a leitura nao repete a operacao.</p>}
 
         {/* ── TABS ─────────────────────────────────────────────────────────── */}
         <div className="flex items-center gap-1 p-1 rounded-2xl" style={{ background: 'var(--surface-card)', border: '1px solid var(--border)' }}>
@@ -398,7 +483,7 @@ export default function Leads() {
             <div className="flex flex-col sm:flex-row gap-3">
               <input className="input-field flex-1" placeholder="Nicho: Salão de beleza, Barbearia..." value={scraperNiche} onChange={e => { setScraperNiche(e.target.value); setScraperError('') }} />
               <input className="input-field flex-1" placeholder="Cidade / Estado (opcional): farroupilha rs" value={scraperLocation} onChange={e => setScraperLocation(e.target.value)} />
-              <button onClick={handleMapsScrape} disabled={scraping} className="btn-primary gap-2 whitespace-nowrap">
+              <button onClick={handleMapsScrape} disabled={!LEAD_CAPTURE_AVAILABLE || scraping} className="btn-primary gap-2 whitespace-nowrap">
                 {scraping ? <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Buscando...</> : <><Search size={14} /> Iniciar Scraping</>}
               </button>
             </div>
@@ -412,13 +497,13 @@ export default function Leads() {
         {activeTab === 'instagram' && (
           <div className="card animate-fade-in" style={{ borderColor: 'rgba(124,58,237,0.3)' }}>
             <p className="section-title flex items-center gap-2 mb-1"><Instagram size={16} style={{ color: '#7c3aed' }} /> Instagram Sniper</p>
-            <p className="section-subtitle mb-4">Cole um @perfil ou #hashtag — James extrai leads qualificados</p>
+            <p className="section-subtitle mb-4">Cole um @perfil ou #hashtag — captura real ainda nao integrada</p>
             <div className="flex flex-col sm:flex-row gap-3">
               <div className="relative flex-1">
                 <Hash size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#7c3aed' }} />
                 <input className="input-field pl-9" placeholder="@salaodabeleza ou #salaosp" value={igTarget} onChange={e => setIgTarget(e.target.value)} />
               </div>
-              <button onClick={handleIgScrape} disabled={igScraping}
+              <button onClick={handleIgScrape} disabled={!LEAD_CAPTURE_AVAILABLE || igScraping}
                 className="gap-2 whitespace-nowrap px-5 py-2.5 rounded-xl font-semibold text-sm flex items-center"
                 style={{ background: 'rgba(124,58,237,0.15)', color: '#7c3aed', border: '1px solid rgba(124,58,237,0.3)' }}>
                 {igScraping ? <><div className="w-4 h-4 border-2 border-purple-300/30 border-t-purple-500 rounded-full animate-spin" /> Analisando...</> : <><Sparkles size={14} /> Extrair com James</>}
@@ -445,7 +530,7 @@ export default function Leads() {
                 <input className="input-field" placeholder="ex: Caxias do Sul RS" value={cnpjCity} onChange={e => setCnpjCity(e.target.value)} />
               </div>
               <div className="flex items-end">
-                <button onClick={handleCnpjScrape} disabled={cnpjScraping}
+                <button onClick={handleCnpjScrape} disabled={!LEAD_CAPTURE_AVAILABLE || cnpjScraping}
                   className="gap-2 whitespace-nowrap px-5 py-2.5 rounded-xl font-semibold text-sm flex items-center h-[46px]"
                   style={{ background: 'rgba(245,158,11,0.15)', color: '#d97706', border: '1px solid rgba(245,158,11,0.3)' }}>
                   {cnpjScraping ? <><div className="w-4 h-4 border-2 border-amber-300/30 border-t-amber-500 rounded-full animate-spin" /> Consultando...</> : <><Search size={14} /> Radar</>}
@@ -459,18 +544,15 @@ export default function Leads() {
         )}
 
         {/* ── vCARD / CSV ───────────────────────────────────────────────────── */}
+        {activeTab === 'public' && (
+          <div className="card animate-fade-in">
+            <PublicLeadSearchPanel key={(tenant?.id ?? '') + ':' + (user?.id ?? '')} tenantId={tenant?.id} userId={user?.id} />
+          </div>
+        )}
+
         {activeTab === 'vcard' && (
-          <div className="card animate-fade-in" style={{ borderColor: 'rgba(16,185,129,0.3)' }}>
-            <p className="section-title flex items-center gap-2 mb-1"><Upload size={16} style={{ color: '#10b981' }} /> Importação vCard / CSV</p>
-            <p className="section-subtitle mb-4">Importe listas de contatos — classificados como leads Quentes 🔥</p>
-            <label className="flex flex-col items-center justify-center border-2 border-dashed rounded-2xl py-10 cursor-pointer transition-colors hover:border-emerald-400"
-              style={{ borderColor: 'rgba(16,185,129,0.4)', background: 'rgba(16,185,129,0.04)' }}
-              onClick={() => fileRef.current?.click()}>
-              <Upload size={28} style={{ color: '#10b981' }} className="mb-2" />
-              <span className="text-sm font-semibold" style={{ color: '#10b981' }}>Arraste ou clique para importar</span>
-              <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>.vcf · .csv · .xlsx</span>
-              <input ref={fileRef} type="file" accept=".vcf,.csv,.xlsx,.xls" className="hidden" onChange={handleVcard} />
-            </label>
+          <div className="card animate-fade-in">
+            <LeadFileImportPanel key={(tenant?.id ?? '') + ':' + (user?.id ?? '')} tenantId={tenant?.id} userId={user?.id} tenantName={tenant?.name} onImported={fetchLeads} />
           </div>
         )}
 
@@ -484,11 +566,11 @@ export default function Leads() {
             <div className="flex items-center gap-2 flex-wrap">
               {/* Limpar todos */}
               {leads.length > 0 && (
-                <button onClick={handleClearAll} disabled={clearingLeads}
+                <button onClick={handleClearAll} disabled={clearingLeads || mutating || mutationBlocked}
                   className="text-xs px-3 py-1.5 rounded-xl font-semibold flex items-center gap-1"
                   style={{ background: 'rgba(220,38,38,0.08)', color: '#dc2626', border: '1px solid rgba(220,38,38,0.2)' }}>
                   {clearingLeads ? <div className="w-3 h-3 border-2 border-red-300 border-t-red-600 rounded-full animate-spin" /> : <Trash2 size={11} />}
-                  Limpar todos ({leads.length})
+                  Excluir carregados ({leads.length})
                 </button>
               )}
               {/* Temperature filter */}
@@ -506,7 +588,7 @@ export default function Leads() {
                 <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
                 <input className="input-field pl-8 py-2 w-36 text-sm" placeholder="Buscar..." value={query} onChange={e => setQuery(e.target.value)} />
               </div>
-              <button onClick={fetchLeads} className="btn-secondary gap-1 py-2 px-3 text-xs"><RefreshCw size={12} /></button>
+              <button onClick={fetchLeads} disabled={mutating} aria-label="Atualizar cadastros" className="btn-secondary gap-1 py-2 px-3 text-xs"><RefreshCw size={12} /></button>
             </div>
           </div>
 
@@ -518,7 +600,7 @@ export default function Leads() {
               <span className="text-sm font-semibold flex-1" style={{ color: 'var(--text-main)' }}>
                 {selected.size} leads selecionados para Blitz
               </span>
-              <button onClick={handleBlitz} disabled={blitzing}
+              <button onClick={handleBlitz} disabled={!LEAD_CONTACT_AVAILABLE || blitzing} title={LEAD_CONTACT_BLOCK_REASON}
                 className="btn-primary gap-2 text-sm py-1.5">
                 {blitzing
                   ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> James gerando...</>
@@ -548,20 +630,15 @@ export default function Leads() {
                     <th className="table-header">Nome</th>
                     <th className="table-header">Telefone</th>
                     <th className="table-header">Fonte</th>
-                    <th className="table-header">Temperatura</th>
+                    <th className="table-header">Qualificacao</th>
                     <th className="table-header">Status</th>
                     <th className="table-header"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {filtered.map(lead => {
-                    const temp = TEMP_BY_SOURCE[lead.source] ?? 'cold'
-                    const tempStyle = temp === 'cold'
-                      ? { color: '#60a5fa', bg: 'rgba(96,165,250,0.1)' }
-                      : temp === 'warm'
-                      ? { color: '#a78bfa', bg: 'rgba(167,139,250,0.1)' }
-                      : { color: '#f97316', bg: 'rgba(249,115,22,0.1)' }
-                    const tempLabel = temp === 'cold' ? '❄️ Frio' : temp === 'warm' ? '🌡️ Morno' : '🔥 Quente'
+                    const tempStyle = { color: 'var(--text-muted)', bg: 'var(--surface-hover)' }
+                    const tempLabel = 'Nao avaliada'
                     const isSelected = selected.has(lead.id)
                     const blitzMsg = blitzResults[lead.name]
 
@@ -588,12 +665,11 @@ export default function Leads() {
                         <td className="table-cell font-mono text-xs" style={{ color: 'var(--text-muted)' }}>
                           <div className="flex items-center gap-2">
                             {lead.phone}
-                            <a href={`https://wa.me/55${lead.phone.replace(/\D/g, '')}`}
-                              target="_blank" rel="noopener noreferrer"
-                              className="text-xs px-1.5 py-0.5 rounded font-semibold"
+                            <button type="button" disabled title={LEAD_CONTACT_BLOCK_REASON} aria-label="Contato indisponivel"
+                              className="text-xs px-1.5 py-0.5 rounded font-semibold opacity-50"
                               style={{ background: 'rgba(37,211,102,0.12)', color: '#16a34a' }}>
                               <Phone size={10} />
-                            </a>
+                            </button>
                           </div>
                         </td>
                         <td className="table-cell">
@@ -606,7 +682,7 @@ export default function Leads() {
                           ) : lead.source === 'instagram' ? (
                             <span className="flex items-center gap-1 text-xs" style={{ color: '#7c3aed' }}><Instagram size={11} /> Instagram</span>
                           ) : lead.source === 'csv' ? (
-                            <span className="flex items-center gap-1 text-xs" style={{ color: '#10b981' }}><Upload size={11} /> vCard</span>
+                            <span className="flex items-center gap-1 text-xs" style={{ color: '#10b981' }}><Upload size={11} /> Arquivo</span>
                           ) : (
                             <span className="flex items-center gap-1 text-xs" style={{ color: '#f59e0b' }}><Building2 size={11} /> CNPJ</span>
                           )}
@@ -618,7 +694,7 @@ export default function Leads() {
                           </span>
                         </td>
                         <td className="table-cell">
-                          <select value={lead.status}
+                          <select value={lead.status} disabled={mutating || mutationBlocked} aria-label={'Status de ' + lead.name}
                             onChange={e => handleStatusChange(lead.id, e.target.value as Lead['status'])}
                             className="text-xs rounded-lg px-2 py-1 cursor-pointer"
                             style={{ background: 'var(--surface-hover)', border: '1px solid var(--border)', color: 'var(--text-main)' }}>
@@ -626,7 +702,7 @@ export default function Leads() {
                           </select>
                         </td>
                         <td className="table-cell">
-                          <button onClick={() => handleDelete(lead.id)}
+                          <button onClick={() => handleDelete(lead.id)} disabled={mutating || mutationBlocked} aria-label={'Excluir ' + lead.name}
                             className="w-7 h-7 flex items-center justify-center rounded-lg"
                             style={{ color: 'var(--text-muted)' }}
                             onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#dc2626'; (e.currentTarget as HTMLElement).style.background = 'rgba(220,38,38,0.08)' }}
@@ -644,7 +720,7 @@ export default function Leads() {
         </div>
 
         {/* ── BLITZ RESULTS + CADENCIADOR ───────────────────────────────────── */}
-        {blitzOpen && Object.keys(blitzResults).length > 0 && (
+        {LEAD_CONTACT_AVAILABLE && blitzOpen && Object.keys(blitzResults).length > 0 && (
           <div className="card animate-fade-in" style={{ borderColor: 'var(--accent)', background: 'var(--gradient-subtle)' }}>
             {/* Header */}
             <div className="flex items-center justify-between mb-4">
@@ -678,7 +754,7 @@ export default function Leads() {
                 </div>
                 <div className="flex items-end gap-2">
                   {!cadActive ? (
-                    <button onClick={handleCadenciadoBlitz}
+                    <button onClick={handleCadenciadoBlitz} disabled={!LEAD_CONTACT_AVAILABLE} title={LEAD_CONTACT_BLOCK_REASON}
                       className="btn-primary gap-2 py-2 whitespace-nowrap text-sm">
                       <Zap size={13} /> Disparar com Cadênciador
                     </button>

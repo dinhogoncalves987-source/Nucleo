@@ -12,6 +12,7 @@ interface Props {
 }
 
 const sidebarComponent = Sidebar as SidebarComponent
+const isDemo = import.meta.env.VITE_DEMO_MODE !== 'false'
 
 export default function AppLayout({ children, title, subtitle }: Props) {
   const { tenant } = useTenant()
@@ -75,6 +76,13 @@ export default function AppLayout({ children, title, subtitle }: Props) {
             </div>
           </div>
         </header>
+
+        {isDemo && (
+          <div className="px-4 py-2 text-center text-xs font-bold tracking-wide"
+            style={{ background: '#f59e0b', color: '#1c1202' }}>
+            MODO DEMONSTRACAO — dados ficticios; envios, cobrancas e automacoes reais estao bloqueados
+          </div>
+        )}
 
         {/* Page content */}
         <main

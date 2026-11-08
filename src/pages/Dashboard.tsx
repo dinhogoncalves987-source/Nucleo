@@ -9,101 +9,55 @@ import { useTenant } from '../contexts/tenant-context'
 import { useTheme } from '../contexts/theme-context'
 import { supabase } from '../lib/supabase'
 
-interface FinanceRow { transaction_date: string; amount: number; type?: string }
-interface LeadCounts { new: number; contacted: number; qualified: number; converted: number }
+import { loadDashboard, conversionRate as getConversionRate, createRequestGate } from '../lib/dashboard-data'
+import type { ReadPage } from '../lib/dashboard-data'
 
-function groupByMonth(rows: FinanceRow[]) {
-  const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
-  const map: Record<string, number> = {}
-  rows.forEach(r => {
-    const d = new Date(r.transaction_date)
-    const key = `${months[d.getMonth()]}/${String(d.getFullYear()).slice(2)}`
-    map[key] = (map[key] ?? 0) + Number(r.amount)
-  })
-  return Object.entries(map).map(([month, value]) => ({ month, value })).slice(-6)
+const fmt = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+const readPage: ReadPage = (table, tenantId, from, to, start, end) => {
+  let query = supabase.from(table)
+    .select(table === 'finances' ? 'id, transaction_date, amount' : 'id, status', { count: 'exact' })
+    .eq('tenant_id', tenantId)
+  if (table === 'finances') query = query.gte('transaction_date', start).lt('transaction_date', end)
+  return query.order('id', { ascending: true }).range(from, to)
 }
-
-const fmt = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 0 })}`
 
 export default function Dashboard() {
   const { tenant } = useTenant()
+  // Switching companies destroys previous local state before the new company renders.
+  return <TenantDashboard key={tenant?.id ?? 'no-tenant'} />
+}
+
+function TenantDashboard() {
+  const { tenant } = useTenant()
+  const tenantId = tenant?.id
   const { isDark } = useTheme()
-  const [billingData, setBillingData] = useState<{ month: string; value: number }[]>([])
-  const [leadCounts, setLeadCounts] = useState<LeadCounts>({ new: 0, contacted: 0, qualified: 0, converted: 0 })
-  const [tenantCount, setTenantCount] = useState(1)
-  const [loading, setLoading] = useState(true)
-  const [isDemo, setIsDemo] = useState(false)
-  const dashboardRequestRef = useRef(0)
-  const dashboardTenantIdRef = useRef(tenant?.id)
-  dashboardTenantIdRef.current = tenant?.id
-
+  const [data, setData] = useState<Awaited<ReturnType<typeof loadDashboard>> | null>(null)
+  const [loading, setLoading] = useState(Boolean(tenantId))
+  const gate = useRef(createRequestGate())
   const fetchData = useCallback(async () => {
-    const tenantId = dashboardTenantIdRef.current
     if (!tenantId) return
-    const requestId = ++dashboardRequestRef.current
+    const current = gate.current.begin()
     setLoading(true)
-    setIsDemo(false)
-    try {
-      // Finances
-      const { data: finances } = await supabase
-        .from('finances')
-        .select('transaction_date, amount, type')
-        .eq('tenant_id', tenantId)
-        .order('transaction_date', { ascending: true })
-
-      if (
-        dashboardRequestRef.current !== requestId ||
-        dashboardTenantIdRef.current !== tenantId
-      ) return
-      if (finances && finances.length > 0) {
-        const grouped = groupByMonth(finances as FinanceRow[])
-        setBillingData(grouped)
-      } else {
-        setIsDemo(true)
-        setBillingData([
-          { month: 'Out/24', value: 18400 }, { month: 'Nov/24', value: 24700 },
-          { month: 'Dez/24', value: 21200 }, { month: 'Jan/25', value: 29800 },
-          { month: 'Fev/25', value: 33100 }, { month: 'Mar/25', value: 41500 },
-        ])
-      }
-
-      // Count tenants (for SaaS MRR)
-      const { count } = await supabase.from('tenants').select('id', { count: 'exact', head: true })
-      if (
-        dashboardRequestRef.current !== requestId ||
-        dashboardTenantIdRef.current !== tenantId
-      ) return
-      setTenantCount(count ?? 1)
-
-      // Lead funnel
-      const { data: leads } = await supabase.from('leads').select('status').eq('tenant_id', tenantId)
-      if (
-        dashboardRequestRef.current !== requestId ||
-        dashboardTenantIdRef.current !== tenantId
-      ) return
-      if (leads && leads.length > 0) {
-        const counts: LeadCounts = { new: 0, contacted: 0, qualified: 0, converted: 0 }
-        leads.forEach(l => { if (l.status in counts) counts[l.status as keyof LeadCounts]++ })
-        setLeadCounts(counts)
-      } else {
-        setLeadCounts({ new: 340, contacted: 210, qualified: 95, converted: 38 })
-      }
-    } catch (err) { console.error('Dashboard fetch error:', err) }
-    finally {
-      if (
-        dashboardRequestRef.current === requestId &&
-        dashboardTenantIdRef.current === tenantId
-      ) setLoading(false)
-    }
-  }, [])
+    setData(null)
+    const next = await loadDashboard(readPage, tenantId, new Date())
+    if (!current()) return
+    setData(next)
+    setLoading(false)
+  }, [tenantId])
 
   useEffect(() => {
+    const requests = gate.current
     void fetchData()
-    return () => { dashboardRequestRef.current += 1 }
+    return () => requests.cancel()
   }, [fetchData])
 
-  const totalLeads = Object.values(leadCounts).reduce((a, b) => a + b, 0) || 1
-  const conversionRate = ((leadCounts.converted / totalLeads) * 100).toFixed(1)
+  const leads = data?.leads.status === 'ready' ? data.leads.data : null
+  const billing = data?.billing.status === 'ready' ? data.billing.data : null
+  const totalLeads = leads ? Object.values(leads).reduce((a, b) => a + b, 0) : null
+  const conversion = leads ? getConversionRate(leads) : null
+  const conversionRate = conversion === null ? 'Indisponível' : `${conversion.toFixed(1)}%`
+  const unavailable = loading ? 'Carregando...' : !tenantId ? 'Selecione uma empresa' : 'Indisponível'
+  const billingData = billing?.points ?? []
 
   const tooltipStyle = {
     background: isDark ? '#1E1218' : '#ffffff',
@@ -111,32 +65,30 @@ export default function Dashboard() {
     borderRadius: 8, color: 'var(--text-main)', fontSize: 12,
   }
 
-  const funnelData = [
-    { name: 'Prospectados', value: totalLeads, fill: '#C2185B' },
-    { name: 'Contatados', value: leadCounts.contacted + leadCounts.qualified + leadCounts.converted, fill: '#E91E8C' },
-    { name: 'Qualificados', value: leadCounts.qualified + leadCounts.converted, fill: '#D4A017' },
-    { name: 'Convertidos', value: leadCounts.converted, fill: '#B5860D' },
-  ]
+  const funnelData = leads ? [
+    { name: 'Novos', value: leads.new, fill: '#C2185B' },
+    { name: 'Contatados', value: leads.contacted, fill: '#E91E8C' },
+    { name: 'Qualificados', value: leads.qualified, fill: '#D4A017' },
+    { name: 'Convertidos', value: leads.converted, fill: '#B5860D' },
+    { name: 'Perdidos', value: leads.lost, fill: '#64748b' },
+  ] : []
 
   return (
     <AppLayout title="Dashboard" subtitle={`Visão geral — ${tenant?.name}`}>
 
-      {/* Demo notice */}
-      {isDemo && (
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-xl mb-4 text-xs"
-          style={{ background: 'rgba(181,134,13,0.08)', border: '1px solid rgba(181,134,13,0.2)', color: 'var(--gold)' }}>
-          <AlertCircle size={13} />
-          <span><strong>PROJEÇÃO</strong> — Sem dados reais ainda. Estes números são estimativas ilustrativas.</span>
+      {!tenantId && <p role="status">Selecione uma empresa para consultar os dados.</p>}
+      {(data?.billing.status === 'error' || data?.leads.status === 'error') && (
+        <div role="alert" className="flex items-center gap-2 px-4 py-2.5 rounded-xl mb-4 text-xs">
+          <AlertCircle size={13} /> Não foi possível carregar todos os dados. Atualize para tentar novamente.
         </div>
       )}
 
-      {/* KPIs — Métricas de Lançamento */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-5">
         {[
-          { icon: Users, label: 'Estabelecimentos', value: String(tenantCount), sub: 'Parceiros na plataforma', c: 'var(--accent)', bg: 'var(--accent-muted)' },
-          { icon: TrendingUp, label: 'Clientes', value: String(totalLeads), sub: 'Base total de clientes', c: '#10b981', bg: 'rgba(16,185,129,0.1)' },
-          { icon: BarChart3, label: 'Leads Pipeline', value: String(leadCounts.new + leadCounts.contacted), sub: `${leadCounts.new} novos | ${leadCounts.contacted} contatados`, c: 'var(--gold)', bg: 'var(--gold-muted)' },
-          { icon: Zap, label: 'Taxa de Conversão', value: `${conversionRate}%`, sub: `${leadCounts.converted} convertidos`, c: '#7c3aed', bg: 'rgba(124,58,237,0.1)' },
+          { icon: Users, label: 'Estabelecimentos', value: 'Indisponível', sub: 'Sem fonte consolidada autorizada', c: 'var(--accent)', bg: 'var(--accent-muted)' },
+          { icon: TrendingUp, label: 'Leads cadastrados', value: totalLeads === null ? unavailable : String(totalLeads), sub: 'Empresa selecionada; inclui perdidos', c: '#10b981', bg: 'rgba(16,185,129,0.1)' },
+          { icon: BarChart3, label: 'Leads Pipeline', value: leads ? String(leads.new + leads.contacted + leads.qualified) : unavailable, sub: 'Novos, contatados e qualificados', c: 'var(--gold)', bg: 'var(--gold-muted)' },
+          { icon: Zap, label: 'Taxa de Conversão', value: leads ? conversionRate : unavailable, sub: leads ? totalLeads === 0 ? 'Sem leads para calcular' : `${leads.converted} convertidos / ${totalLeads} leads` : 'Conversões / todos os leads', c: '#7c3aed', bg: 'rgba(124,58,237,0.1)' },
         ].map(({ icon: Icon, label, value, sub, c, bg }) => (
           <div key={label} className="card animate-fade-in">
             <div className="flex items-center justify-between mb-3">
@@ -158,19 +110,20 @@ export default function Dashboard() {
         <div className="card lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
             <div>
-              <p className="section-title">Faturamento Real</p>
+              <p className="section-title">Lançamentos financeiros</p>
               <p className="section-subtitle">Últimos 6 meses — {tenant?.name}</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className={isDemo ? 'badge-warning' : 'badge-success'}>
-                <ArrowUpRight size={11} />{isDemo ? 'PROJEÇÃO' : 'real'}
+              <span className={billing ? 'badge-success' : 'badge-warning'}>
+                <ArrowUpRight size={11} />{loading ? 'Carregando' : billing ? 'Registrados' : 'Indisponível'}
               </span>
-              <button onClick={fetchData} className="btn-secondary py-1 px-2 gap-1 text-xs">
+              <button onClick={() => void fetchData()} disabled={!tenantId || loading} aria-label="Atualizar dashboard" className="btn-secondary py-1 px-2 gap-1 text-xs">
                 <RefreshCw size={11} />
               </button>
             </div>
           </div>
-          <ResponsiveContainer width="100%" height={190}>
+          <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>Soma dos lançamentos; não representa receita recorrente nem recebimentos confirmados.</p>
+          {!billing || billing.count === 0 ? <p role="status" className="h-[190px] flex items-center justify-center text-sm">{loading ? 'Carregando lançamentos...' : billing ? 'Nenhum lançamento no período. Total registrado: R$ 0,00.' : unavailable}</p> : <ResponsiveContainer width="100%" height={190}>
             <AreaChart data={billingData} margin={{ top: 4, right: 4, bottom: 0, left: -20 }}>
               <defs>
                 <linearGradient id="accentGrad" x1="0" y1="0" x2="0" y2="1">
@@ -181,16 +134,16 @@ export default function Dashboard() {
               <XAxis dataKey="month" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false}
                 tickFormatter={v => `R$${(v/1000).toFixed(0)}k`} />
-              <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [fmt(v), 'Faturamento']} />
+              <Tooltip contentStyle={tooltipStyle} formatter={(v: number) => [fmt(v), 'Lançamentos']} />
               <Area type="monotone" dataKey="value" stroke="var(--accent)" strokeWidth={2.5} fill="url(#accentGrad)" />
             </AreaChart>
-          </ResponsiveContainer>
+          </ResponsiveContainer>}
         </div>
 
         <div className="card">
           <p className="section-title">Funil de Leads</p>
-          <p className="section-subtitle">Dados reais do banco</p>
-          <ResponsiveContainer width="100%" height={160}>
+          <p className="section-subtitle">Quantidade atual por status; não indica histórico de passagem</p>
+          {!leads || totalLeads === 0 ? <p role="status" className="h-[160px] flex items-center justify-center text-sm">{loading ? 'Carregando leads...' : leads ? 'Nenhum lead cadastrado.' : unavailable}</p> : <ResponsiveContainer width="100%" height={160}>
             <BarChart data={funnelData} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 60 }}>
               <XAxis type="number" hide />
               <YAxis type="category" dataKey="name" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} axisLine={false} tickLine={false} width={60} />
@@ -199,10 +152,10 @@ export default function Dashboard() {
                 {funnelData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
               </Bar>
             </BarChart>
-          </ResponsiveContainer>
+          </ResponsiveContainer>}
           <div className="flex justify-between mt-3 pt-3" style={{ borderTop: '1px solid var(--border)' }}>
             <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Taxa de conversão</span>
-            <span className="text-sm font-bold" style={{ color: 'var(--accent)' }}>{loading ? '—' : `${conversionRate}%`}</span>
+            <span className="text-sm font-bold" style={{ color: 'var(--accent)' }}>{loading ? '—' : conversionRate}</span>
           </div>
         </div>
       </div>

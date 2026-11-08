@@ -319,7 +319,7 @@ export default function Sidebar() {
         {!collapsed && (
           <div className="px-3 py-2 rounded-xl my-1" style={{ background: 'var(--surface-hover)', border: '1px solid var(--border)' }}>
             <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-main)' }}>
-              {user?.email ?? 'admin@nucleo.com'}
+              {user?.email ?? 'Conta autenticada'}
             </p>
             <p className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>
               {user?.role ?? 'commander'}

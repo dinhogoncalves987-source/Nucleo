@@ -52,7 +52,8 @@ async function getTenantAsaasId(tenantId: string): Promise<string | null> {
 // Body: { tenantId, name, cpfCnpj, email, phone?, mobilePhone? }
 // ────────────────────────────────────────────────────────────────
 router.post('/accounts', async (req, res) => {
-  const { tenantId, name, cpfCnpj, email, phone, mobilePhone } = req.body
+  const tenantId = req.auth!.tenantId!
+  const { name, cpfCnpj, email, phone, mobilePhone } = req.body
 
   if (!tenantId || !name || !cpfCnpj || !email) {
     res.status(400).json({ error: 'tenantId, name, cpfCnpj e email são obrigatórios' })
@@ -107,10 +108,11 @@ router.post('/accounts', async (req, res) => {
 // ────────────────────────────────────────────────────────────────
 router.post('/charges', async (req, res) => {
   const {
-    tenantId, clientBubbleId, amount, billingType = 'PIX',
+    clientBubbleId, amount, billingType = 'PIX',
     dueDate, description, affiliateSlug,
     customerName, customerCpfCnpj, customerEmail,
   } = req.body
+  const tenantId = req.auth!.tenantId!
 
   if (!tenantId || !clientBubbleId || !amount || !customerCpfCnpj) {
     res.status(400).json({ error: 'tenantId, clientBubbleId, amount, customerCpfCnpj são obrigatórios' })
@@ -228,7 +230,7 @@ router.post('/charges', async (req, res) => {
 // GET /api/asaas/balance/:tenantId — Saldo da subconta
 // ────────────────────────────────────────────────────────────────
 router.get('/balance/:tenantId', async (req, res) => {
-  const { tenantId } = req.params
+  const tenantId = req.auth!.tenantId!
   try {
     // Buscar api_key da subconta
     const { data: acc } = await supabase

@@ -1,8 +1,15 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { useTenant } from '../contexts/tenant-context'
 import JamesCoreWrapper from '../components/james-core/JamesCoreWrapper'
-// MicVAD replaced by native MediaRecorder VAD (no external deps)
+import { backendFetch } from '../lib/backend'
+import { requestJamesConversation, accessJamesMemory, type JamesTurn } from '../lib/jamesConversation'
+import { useTenant } from '../contexts/tenant-context'
+import { transitionJamesWakeState } from '../lib/jamesWakeTransition'
+import { startJamesWakeListener } from '../lib/jamesWakeListener'
+import { advanceJamesVoiceContext, createJamesVoiceContext, cancelJamesRecognition, voiceCallbackIsCurrent } from '../lib/jamesVoiceContext'
+import { createJamesOperationGate } from '../lib/jamesOperationGate'
+import { assertMemoryMode, rememberSession } from '../lib/jamesSessionPointer'
+// Entrada de voz via SpeechRecognition nativo do navegador
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type NucleoState =
@@ -31,95 +38,8 @@ type ISpeechRecognition = {
   start(): void; stop(): void; abort(): void
 }
 
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL as string | undefined) || ''
-const API_SECRET  = (import.meta.env.VITE_API_SECRET  as string | undefined) || ''
 
 // ─── Backend helpers (todo o cérebro vive no backend) ──────────────────────
-
-// Envia áudio WAV → backend → Whisper → texto
-async function transcribeBackend(wavBlob: Blob): Promise<string> {
-  try {
-    const form = new FormData()
-    form.append('audio', wavBlob, 'audio.wav')
-    const res = await fetch(`${BACKEND_URL}/api/james/transcribe`, {
-      method:  'POST',
-      headers: { 'x-api-secret': API_SECRET },
-      body:    form,
-      signal:  AbortSignal.timeout(25_000),
-    })
-    if (!res.ok) return ''
-    const data = await res.json() as { text?: string }
-    return data.text?.trim() ?? ''
-  } catch { return '' }
-}
-
-// ─── callBackendStream: GPT streaming → TTS por frase → toca em ordem ──────
-// onChunkReady: chamado com cada URL de áudio pronto para tocar, em sequência
-async function callBackendStream(
-  message:      string,
-  tenantId:     string,
-  sessionId:    string,
-  onChunkReady: (audioUrl: string, text: string) => void,
-  onDone:       (fullText: string) => void,
-  onError:      () => void,
-): Promise<void> {
-  try {
-    const res = await fetch(`${BACKEND_URL}/api/james/think-stream`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-secret': API_SECRET },
-      body:    JSON.stringify({ message, tenant_id: tenantId, origin: 'frontend', sessionId }),
-      signal:  AbortSignal.timeout(60_000),
-    })
-    if (!res.ok || !res.body) { onError(); return }
-
-    const reader  = res.body.getReader()
-    const decoder = new TextDecoder()
-    let   buf     = ''
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-
-      const parts = buf.split('\n\n')
-      buf = parts.pop() ?? ''
-
-      for (const part of parts) {
-        const line = part.trim()
-        if (!line.startsWith('data: ')) continue
-        try {
-          const evt = JSON.parse(line.slice(6)) as {
-            type: string; data?: string; text?: string; fullText?: string
-          }
-          if (evt.type === 'audio' && evt.data) {
-            const binary = atob(evt.data)
-            const bytes  = new Uint8Array(binary.length)
-            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
-            const audioUrl = URL.createObjectURL(new Blob([bytes], { type: 'audio/mpeg' }))
-            onChunkReady(audioUrl, evt.text ?? '')
-          } else if (evt.type === 'done') {
-            onDone(evt.fullText ?? '')
-          } else if (evt.type === 'error') {
-            onError()
-          }
-        } catch { /* JSON malformado — ignora */ }
-      }
-    }
-  } catch { onError() }
-}
-
-// Limpa o histórico de sessão no backend quando James é dispensado
-async function resetSession(sessionId: string): Promise<void> {
-  try {
-    await fetch(`${BACKEND_URL}/api/james/session/reset`, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-secret': API_SECRET },
-      body:    JSON.stringify({ sessionId }),
-    })
-  } catch { /* não bloqueia o dismiss */ }
-}
-
-
 
 // ─── Energy Grid Background ────────────────────────────────────────────────
 function EnergyGrid({ active }: { active: boolean }) {
@@ -228,542 +148,248 @@ function SoundBars({ state }: { state: NucleoState }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // ─── MAIN JAMES PAGE ───────────────────────────────────────────────────────
 // ═══════════════════════════════════════════════════════════════════════════
-export default function James() {
+export default function James({ contactId = null }: { contactId?: string | null } = {}) {
   const navigate = useNavigate()
-  const { tenant } = useTenant()
-  const tenantId  = tenant?.id ?? 'personal'
-  const [state, setState] = useState<NucleoState>('nucleus')
+  const { tenant, user } = useTenant()
+  const [draft, setDraft] = useState('')
+  const [replyText, setReplyText] = useState('')
+  const [conversationError, setConversationError] = useState('')
+  const conversation = useRef<JamesTurn[]>([])
+  const requestRef = useRef<AbortController | null>(null)
+  const sessionRef = useRef('')
+  const pendingTurn = useRef<{ id: string; message: string } | null>(null)
+  const memoryKey = `nucleo.james.session:${tenant?.id ?? ''}:${user?.id ?? ''}:${contactId ?? 'general'}`
+  const operationGate = useRef(createJamesOperationGate()).current
+  operationGate.bind(memoryKey)
+  const voiceContext = useRef(createJamesVoiceContext()).current
+  voiceContext.bind(memoryKey)
+  const [, requestVoiceRender] = useState(0)
+  const voiceOrigin = voiceContext.snapshot()
+  const [memoryMode, setMemoryMode] = useState<'loading' | 'disabled' | 'persistent'>('loading')
+  const [memoryRefresh, setMemoryRefresh] = useState(0)
+  const [state, setRenderedState] = useState<NucleoState>('nucleus')
+  const stateRef = useRef<NucleoState>('nucleus')
+  const wakeControllerRef = useRef<ReturnType<typeof startJamesWakeListener> | null>(null)
+  const setState = useCallback((next: NucleoState) => {
+    transitionJamesWakeState(next, wakeControllerRef.current, () => {
+      stateRef.current = next
+      setRenderedState(next)
+    })
+  }, [])
+  useEffect(() => {
+    const controller = new AbortController()
+    operationGate.invalidate()
+    const operation = operationGate.begin()!
+    const timer = setTimeout(() => controller.abort(), 15000)
+    conversation.current = []; pendingTurn.current = null
+    setReplyText(''); setDraft(''); setConversationError(''); setState('nucleus'); setMemoryMode('loading')
+    let saved: string | null = null
+    try { saved = localStorage.getItem(memoryKey) } catch { /* no browser storage: still use server memory */ }
+    sessionRef.current = saved && /^[0-9a-f-]{36}$/i.test(saved) ? saved : crypto.randomUUID()
+    const loadedSession = sessionRef.current
+    void accessJamesMemory(backendFetch, 'load', loadedSession, contactId, controller.signal).then(result => {
+      if (!operationGate.current(operation) || controller.signal.aborted) return
+      assertMemoryMode(saved, result.memory)
+      setMemoryMode(result.memory)
+      if (result.memory === 'persistent') {
+        try { rememberSession(localStorage, memoryKey, loadedSession, result.memory) } catch { /* storage inaccessible */ }
+        conversation.current = result.turns
+        setReplyText(result.turns.filter(turn => turn.role === 'assistant').slice(-1)[0]?.content ?? '')
+        pendingTurn.current = result.pending ?? null
+        if (result.pending) {
+          setDraft(result.pending.message)
+          setConversationError('Existe uma tentativa pendente. Retomar consulta o estado sem iniciar outra geração.')
+        }
+      }
+    }).catch(() => {
+      if (operationGate.current(operation)) {
+        setMemoryMode('persistent')
+        setConversationError('A memória está indisponível. Use Retomar conversa; nenhuma geração foi iniciada.')
+      }
+    }).finally(() => { clearTimeout(timer); operationGate.finish(operation) })
+    return () => { voiceContext.invalidate(); cancelJamesRecognition(recognitionRef.current); recognitionRef.current = null; if (listenTimeoutRef.current) clearTimeout(listenTimeoutRef.current); listenTimeoutRef.current = null; operationGate.invalidate(); clearTimeout(timer); controller.abort(); requestRef.current?.abort(); requestRef.current = null; window.speechSynthesis?.cancel() }
+  }, [memoryKey, contactId, memoryRefresh, operationGate, voiceContext])
 
-  const stateRef   = useRef<NucleoState>('nucleus')
-  stateRef.current = state
-
-  // ── Session ID — único por sessão de página, enviado ao backend
-  const sessionIdRef = useRef<string>(`${tenantId}-${Date.now()}`)
-
-  // ── Core refs ──────────────────────────────────────────────────────────────
-  const audioRef      = useRef<HTMLAudioElement | null>(null)
-  const vadRef        = useRef<{ pause: () => void; start: () => void; destroy: () => void } | null>(null)
-  const busyRef       = useRef(false)
-  const vadInitLock   = useRef(false)
-  const watchdogRef   = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const pendingCtxRef = useRef<string>('')
+  // ── Runtime refs ────────────────────────────────────────────────────────
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+  const recognitionRef = useRef<ISpeechRecognition | null>(null)
+  const listenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const watchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const audioUnlocked = useRef(false)
 
-  // ── Desbloquear autoplay do browser (DEVE ser chamado em gesto do usuário) ──
   const unlockAudio = useCallback(() => {
     if (audioUnlocked.current) return
     try {
-      // Criar AudioContext no gesto do usuário desbloqueia autoplay
       const ctx = new AudioContext()
-      const buf = ctx.createBuffer(1, 1, 22050)
-      const src = ctx.createBufferSource()
-      src.buffer = buf
-      src.connect(ctx.destination)
-      src.start(0)
-      // Também criar e tocar um Audio vazio para desbloquear HTMLAudioElement.play()
-      const silence = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=')
-      silence.volume = 0
-      silence.play().catch(() => {})
+      const source = ctx.createBufferSource()
+      source.buffer = ctx.createBuffer(1, 1, 22050)
+      source.connect(ctx.destination)
+      source.start(0)
       audioUnlocked.current = true
-      console.log('[James] Audio autoplay desbloqueado')
-    } catch (e) {
-      console.warn('[James] Falha ao desbloquear audio:', e)
-    }
+    } catch { /* fallback nativo não exige desbloqueio antecipado */ }
   }, [])
 
+  const stopRecognition = useCallback(() => {
+    if (listenTimeoutRef.current) clearTimeout(listenTimeoutRef.current)
+    listenTimeoutRef.current = null
+    const recognition = recognitionRef.current
+    recognitionRef.current = null
+    if (!recognition) return
+    cancelJamesRecognition(recognition)
+  }, [])
 
-  // ── TTS via backend — sem chave no frontend ──────────────────────────────────
-  // Chama /api/james/tts. Funciona sem OPENAI_API_KEY no browser.
-  const speak = useCallback(async (text: string): Promise<void> => {
+  const speakNative = useCallback((text: string) => new Promise<void>((resolve) => {
+    if (!('speechSynthesis' in window)) { resolve(); return }
+    window.speechSynthesis.cancel()
+    const utterance = new SpeechSynthesisUtterance(text)
+    const voices = window.speechSynthesis.getVoices()
+    utterance.voice = voices.find(voice => voice.lang.toLowerCase() === 'pt-br')
+      ?? voices.find(voice => voice.lang.toLowerCase().startsWith('pt'))
+      ?? null
+    utterance.lang = 'pt-BR'
+    utterance.rate = 1.02
+    const timeout = setTimeout(() => { window.speechSynthesis.cancel(); resolve() }, 60_000)
+    utterance.onend = () => { clearTimeout(timeout); resolve() }
+    utterance.onerror = () => { clearTimeout(timeout); resolve() }
+    window.speechSynthesis.speak(utterance)
+  }), [])
+
+  const speak = useCallback(async (text: string, operation: number): Promise<void> => {
     if (!text.trim()) return
-    console.log('[James] speak() chamado:', text.slice(0, 60))
     setState('speaking')
-    vadRef.current?.pause()
+    try { await speakNative(text) }
+    finally { if (operationGate.current(operation) && stateRef.current === 'speaking') setState('active') }
+  }, [speakNative, operationGate])
 
-    try {
-      const res = await fetch(`${BACKEND_URL}/api/james/tts`, {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json', 'x-api-secret': API_SECRET },
-        body:    JSON.stringify({ text: text.slice(0, 4096), voice: 'onyx' }),
-        signal:  AbortSignal.timeout(20_000),
-      })
-      if (!res.ok) {
-        console.error('[James] TTS respondeu com', res.status)
-        throw new Error(`TTS ${res.status}`)
-      }
-
-      console.log('[James] TTS respondeu 200, reproduzindo áudio...')
-      audioRef.current?.pause()
-      const url     = URL.createObjectURL(await res.blob())
-      const audioEl = new Audio(url)
-      audioRef.current = audioEl
-
-      await new Promise<void>((resolve) => {
-        const cleanup = () => { URL.revokeObjectURL(url); resolve() }
-        audioEl.onended  = cleanup
-        audioEl.onerror  = (e) => {
-          console.error('[James] Erro no elemento de áudio:', e)
-          cleanup()
-        }
-        audioEl.onpause  = () => { if (!audioEl.ended) setTimeout(cleanup, 50) }
-        audioEl.play().then(() => {
-          console.log('[James] Áudio tocando com sucesso!')
-        }).catch((err) => {
-          console.error('[James] FALHA no play():', err.message)
-          // Tentativa 2: usar AudioContext como fallback
-          try {
-            const audioCtx = new AudioContext()
-            fetch(url).then(r => r.arrayBuffer()).then(buf => {
-              audioCtx.decodeAudioData(buf, (decoded) => {
-                const source = audioCtx.createBufferSource()
-                source.buffer = decoded
-                source.connect(audioCtx.destination)
-                source.onended = cleanup
-                source.start(0)
-                console.log('[James] Áudio tocando via AudioContext (fallback)')
-              }, cleanup)
-            }).catch(cleanup)
-          } catch {
-            cleanup()
-          }
-        })
-      })
-    } catch (err) {
-      console.error('[James] TTS falhou completamente:', err)
-    } finally {
-      // IMPORTANTE: Mesmo se TTS falhou, manter James ativo (não voltar a dormir)
-      if (stateRef.current === 'speaking') {
-        setState('active')
-        vadRef.current?.start()
-        console.log('[James] Transição speaking → active, VAD iniciado')
-      }
-    }
-  }, [])
-
-
-  // ── Watchdog: if any state gets stuck >35s, force-recover ─────────────
-  // FIX: guarantees we never stay in thinking/speaking with busyRef=true forever
-  const resetWatchdog = useCallback(() => {
-    if (watchdogRef.current) clearTimeout(watchdogRef.current)
-    watchdogRef.current = setTimeout(() => {
-      const s = stateRef.current
-      if (['thinking', 'speaking', 'listening'].includes(s)) {
-        console.warn('[James Watchdog] Dead state detected in:', s, '— force recovering')
-        audioRef.current?.pause()
-        audioRef.current = null
-        busyRef.current = false
-        pendingCtxRef.current = ''
-        setState('active')
-        vadRef.current?.start()
-      }
-    }, 35_000)
-  }, [])
-
-  const clearWatchdog = useCallback(() => {
-    if (watchdogRef.current) { clearTimeout(watchdogRef.current); watchdogRef.current = null }
-  }, [])
-
-  // ── Process speech segment (called when user stops speaking) ─────────────
-  const onSpeechEnd = useCallback(async (audioBlob: Blob) => {
-    if (busyRef.current) return
-    busyRef.current = true
+  const submitCommand = useCallback(async (rawText: string) => {
+    const command = rawText.trim()
+    if (!voiceContext.current(voiceOrigin) || !command || requestRef.current || memoryMode === 'loading') return
+    if (pendingTurn.current && pendingTurn.current.message !== command) { setConversationError('Consulte a tentativa pendente antes de mudar a mensagem.'); return }
+    const operation = operationGate.begin()
+    if (operation === null) return
+    const submittedSession = sessionRef.current
+    stopRecognition()
+    setDraft(command)
+    setConversationError('')
     setState('thinking')
-    resetWatchdog()
-
+    const controller = new AbortController()
+    requestRef.current = controller
+    const timeout = setTimeout(() => controller.abort(), 25000)
     try {
-      if (audioBlob.size < 1000) {
-        console.log('[James] Audio muito curto, ignorando')
-        busyRef.current = false
-        clearWatchdog()
+      if (memoryMode === 'persistent' && !pendingTurn.current) pendingTurn.current = { id: crypto.randomUUID(), message: command }
+      const scope = memoryMode === 'persistent' && pendingTurn.current
+        ? { sessionId: submittedSession, requestId: pendingTurn.current.id, contactId } : undefined
+      const reply = await requestJamesConversation(backendFetch, command, conversation.current, controller.signal, scope)
+      if (!operationGate.current(operation) || controller.signal.aborted || requestRef.current !== controller) return
+      conversation.current = [...conversation.current, { role: 'user', content: command }, { role: 'assistant', content: reply }].slice(-6) as JamesTurn[]
+      pendingTurn.current = null
+      setReplyText(reply)
+      setDraft('')
+      await speak(reply, operation)
+    } catch (error) {
+      if (operationGate.current(operation) && requestRef.current === controller) {
+        setConversationError(controller.signal.aborted ? 'A consulta foi interrompida. Sua mensagem foi preservada.' : error instanceof Error ? error.message : 'A conversa está indisponível.')
         setState('active')
-        vadRef.current?.start()
-        return
       }
-
-      const rawText = await transcribeBackend(audioBlob)
-      if (!rawText || rawText.length < 2) {
-        console.log('[James] Transcrição vazia, retomando escuta')
-        busyRef.current = false
-        clearWatchdog()
-        setState('active')
-        vadRef.current?.start()
-        return
-      }
-
-      const t = rawText.toLowerCase().replace(/[.,!?;:]/g, '').trim()
-
-      // ═══ COMANDO 1: FINALIZAR — "Obrigado James" fecha o Núcleo ═══════════
-      const isDismiss =
-        t.includes('obrigado james') || t.includes('tchau james') ||
-        t.includes('até mais james') || t.includes('ate mais james') ||
-        t.includes('sair james')     || t.includes('dispensar james')
-      if (isDismiss) {
-        pendingCtxRef.current = ''
-        busyRef.current = false
-        clearWatchdog()
-        audioRef.current?.pause()
-        vadRef.current?.pause()
-        // Fala de despedida antes de fechar
-        speak('Até mais, Comandante. Estarei aqui quando precisar.')
-          .catch(() => {})
-          .finally(() => {
-            resetSession(sessionIdRef.current).catch(() => {})
-            setState('closing')
-            setTimeout(() => setState('nucleus'), 700)
-          })
-        return
-      }
-
-      // ═══ COMANDO 2: TRAVAR — "Ok James" para de falar e escuta ═══════════
-      const isPause =
-        t === 'ok james' || t === 'okay james' || t === 'okey james' ||
-        t === 'ok' || t === 'okay' ||
-        t.startsWith('ok james') || t.startsWith('okay james')
-      if (isPause) {
-        audioRef.current?.pause()       // para o áudio atual
-        audioRef.current = null
-        pendingCtxRef.current = ''      // limpa contexto pendente
-        busyRef.current = false
-        clearWatchdog()
-        setState('active')              // volta ao estado ativo (pronto para ouvir)
-        vadRef.current?.start()         // retoma o VAD
-        return
-      }
-
-      // ═══ COMANDO 3: INICIAR (quando já ativo, re-saudação) ═══════════════
-      const isGreeting =
-        t.includes('olá james') || t.includes('ola james') ||
-        t.includes('bom dia james') || t.includes('boa tarde james') ||
-        t.includes('boa noite james') || t.includes('hey james') ||
-        t.includes('ei james') || t.includes('eai james') ||
-        t.includes('e aí james') || t.includes('e ai james')
-      if (isGreeting && stateRef.current !== 'nucleus') {
-        // James já está ativo mas recebeu uma saudação — responde e fica pronto
-        const hour = new Date().getHours()
-        const period = hour < 12 ? 'bom dia' : hour < 18 ? 'boa tarde' : 'boa noite'
-        busyRef.current = false
-        clearWatchdog()
-        speak(`${period.charAt(0).toUpperCase() + period.slice(1)}, Comandante! Estou pronto. O que precisa?`).catch(() => {})
-        return
-      }
-
-      // Full response — streaming: James começa a falar na primeira frase
-      const fullMessage = pendingCtxRef.current ? `${pendingCtxRef.current}\n${rawText}` : rawText
-      pendingCtxRef.current = ''
-
-      // Fila de reprodução sequencial: chunk N toca enquanto chunk N+1 chega
-      const audioQueue:  string[] = []   // URLs de áudio pendentes
-      let   isPlaying  = false
-      let   streamDone = false
-      const urlsToRevoke: string[] = []
-
-      const playNext = async () => {
-        if (isPlaying) return
-        if (audioQueue.length === 0) {
-          if (streamDone) {
-            // Nada mais vem — encerra o ciclo
-            busyRef.current = false
-            clearWatchdog()
-            const s = stateRef.current
-            if (s !== 'nucleus' && s !== 'closing' && s !== 'speaking' && s !== 'waiting') {
-              setState('active')
-              vadRef.current?.start()
-            }
-          }
-          return
-        }
-        isPlaying = true
-        const url = audioQueue.shift()!
-        setState('speaking')
-        vadRef.current?.pause()
-
-        await new Promise<void>(resolve => {
-          const el = new Audio(url)
-          audioRef.current = el
-          const cleanup = () => { URL.revokeObjectURL(url); resolve() }
-          el.onended  = cleanup
-          el.onerror  = cleanup
-          el.onpause  = () => { if (!el.ended) setTimeout(cleanup, 50) }
-          el.play().catch(cleanup)
-        })
-
-        isPlaying = false
-        playNext()  // automaticamente toca o próximo
-      }
-
-      await callBackendStream(
-        fullMessage, tenantId, sessionIdRef.current,
-        /* onChunkReady */ (audioUrl) => {
-          urlsToRevoke.push(audioUrl)
-          audioQueue.push(audioUrl)
-          playNext()  // inicia se não está tocando nada
-        },
-        /* onDone */ () => { streamDone = true; playNext() },
-        /* onError */ () => {
-          streamDone = true
-          busyRef.current = false
-          clearWatchdog()
-          setState('active')
-          vadRef.current?.start()
-        },
-      )
-      // Não encerra aqui — o finally abaixo foi substituído pela lógica interna do stream
-      return
-
-    } catch (err) {
-      console.error('[James] onSpeechEnd error:', err)
     } finally {
-      busyRef.current = false
-      clearWatchdog()
-      const s = stateRef.current
-      if (s !== 'nucleus' && s !== 'closing' && s !== 'speaking' && s !== 'waiting') {
-        setState('active')
-        vadRef.current?.start()
-      }
+      clearTimeout(timeout)
+      if (requestRef.current === controller) requestRef.current = null
+      operationGate.finish(operation)
     }
-  }, [resetWatchdog, clearWatchdog, tenantId, speak])
+  }, [speak, stopRecognition, memoryMode, contactId, operationGate, voiceContext, voiceOrigin])
 
-
-  // ── Native VAD (MediaRecorder + Web Audio AnalyserNode) ─────────────────
-  // Replaces MicVAD/ONNX — zero external dependencies, works in all browsers.
-  // Algorithm: RMS volume polling → speech start when above threshold,
-  // speech end after 1.2s of silence, sends WebM blob to backend Whisper.
-  const initVAD = useCallback(async () => {
-    if (vadRef.current || vadInitLock.current) return
-    vadInitLock.current = true
-
+  const startListening = useCallback(() => {
+    if (!voiceContext.current(voiceOrigin) || memoryMode === 'loading' || stateRef.current === 'thinking' || stateRef.current === 'speaking') return
+    stopRecognition()
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!Recognition) { setState('active'); return }
+    setState('listening')
+    const recognition = new Recognition()
+    recognition.lang = 'pt-BR'
+    recognition.continuous = false
+    recognition.interimResults = false
+    recognitionRef.current = recognition
+    const isCurrent = () => voiceCallbackIsCurrent(voiceContext, voiceOrigin, recognition, recognitionRef.current)
+    recognition.onresult = event => {
+      if (!isCurrent()) return
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const results = Array.from(event.results as any[])
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const finalText = results.map((result: any) => result[0]?.transcript ?? '').join(' ').trim()
+      stopRecognition()
+      if (finalText) void submitCommand(finalText)
+      else setState('active')
+    }
+    recognition.onerror = () => { if (!isCurrent()) return; stopRecognition(); setState('active') }
+    recognition.onend = () => {
+      if (!isCurrent()) return
+      stopRecognition()
+      if (stateRef.current === 'listening') setState('active')
+    }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-      if (!vadInitLock.current) { stream.getTracks().forEach(t => t.stop()); return }
+      recognition.start()
+      listenTimeoutRef.current = setTimeout(() => {
+        if (isCurrent() && stateRef.current === 'listening') { stopRecognition(); setState('active') }
+      }, 20_000)
+    } catch { stopRecognition(); setState('active') }
+  }, [stopRecognition, submitCommand, voiceContext, voiceOrigin, memoryMode])
 
-      const ctx       = new AudioContext()
-      const src       = ctx.createMediaStreamSource(stream)
-      const analyser  = ctx.createAnalyser()
-      analyser.fftSize = 512
-      src.connect(analyser)
-
-      const dataArr   = new Uint8Array(analyser.frequencyBinCount)
-      let recorder: MediaRecorder | null = null
-      let chunks: Blob[]                 = []
-      let speaking                       = false
-      let paused                         = false   // ← NEW: tracks if VAD is paused
-      let silenceTimer: ReturnType<typeof setTimeout> | null = null
-      let rafId: number
-
-      const SPEECH_THRESHOLD = 18   // RMS 0-128 — above = speech
-      const SILENCE_MS       = 1200 // ms of silence before we cut
-
-      const startRecording = () => {
-        if (recorder && recorder.state === 'recording') return
-        chunks = []
-        recorder = new MediaRecorder(stream, { mimeType: 'audio/webm' })
-        recorder.ondataavailable = e => { if (e.data.size > 0) chunks.push(e.data) }
-        recorder.onstop = () => {
-          const blob = new Blob(chunks, { type: 'audio/webm' })
-          onSpeechEnd(blob)
-        }
-        recorder.start()
-        setState('listening')
-      }
-
-      const stopRecording = () => {
-        if (!recorder || recorder.state !== 'recording') return
-        recorder.stop()
-        setState('thinking')
-      }
-
-      const tick = () => {
-        if (!vadInitLock.current && !vadRef.current) return  // destroyed
-        analyser.getByteTimeDomainData(dataArr)
-        const rms = Math.sqrt(dataArr.reduce((s, v) => s + (v - 128) ** 2, 0) / dataArr.length)
-
-        // Skip detection when paused or busy
-        if (paused || busyRef.current) {
-          rafId = requestAnimationFrame(tick)
-          return
-        }
-
-        if (rms > SPEECH_THRESHOLD) {
-          if (!speaking) {
-            speaking = true
-            if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null }
-            startRecording()
-          } else if (speaking && silenceTimer) {
-            clearTimeout(silenceTimer); silenceTimer = null
-          }
-        } else if (speaking) {
-          if (!silenceTimer) {
-            silenceTimer = setTimeout(() => {
-              speaking = false
-              silenceTimer = null
-              stopRecording()
-            }, SILENCE_MS)
-          }
-        }
-        rafId = requestAnimationFrame(tick)
-      }
-
-      rafId = requestAnimationFrame(tick)
-
-      vadRef.current = {
-        pause: () => {
-          paused = true
-          speaking = false
-          if (silenceTimer) { clearTimeout(silenceTimer); silenceTimer = null }
-          // Stop any active recording without triggering onSpeechEnd
-          if (recorder?.state === 'recording') {
-            recorder.ondataavailable = null
-            recorder.onstop = null
-            try {
-              recorder.stop()
-            } catch (error) {
-              if (!(error instanceof DOMException && error.name === 'InvalidStateError')) {
-                console.warn('[James VAD] Falha ao interromper gravação:', error)
-              }
-            }
-          }
-        },
-        start: () => {
-          paused = false
-          speaking = false
-          busyRef.current = false
-          // RAF already running — just un-pause
-        },
-        destroy: () => {
-          cancelAnimationFrame(rafId)
-          if (silenceTimer) clearTimeout(silenceTimer)
-          if (recorder?.state === 'recording') recorder.stop()
-          stream.getTracks().forEach(t => t.stop())
-          ctx.close().catch(() => {})
-        },
-      }
-    } catch (err) {
-      console.error('[James VAD] failed to init:', err)
-    } finally {
-      vadInitLock.current = false
-    }
-  }, [onSpeechEnd])
-
-  const destroyVAD = useCallback(() => {
-    vadInitLock.current = false
-    vadRef.current?.destroy()
-    vadRef.current = null
-  }, [])
-
-  // ── Start/destroy VAD based on state ────────────────────────────────────
-  useEffect(() => {
-    if (state === 'active' || state === 'listening' || state === 'waiting') {
-      initVAD()
-    } else if (state === 'nucleus' || state === 'closing') {
-      destroyVAD()
-    }
-  }, [state, initVAD, destroyVAD])
-
-  // ── Summon & dismiss ────────────────────────────────────────────────────
-  const summon = useCallback((greeting?: string) => {
-    if (stateRef.current !== 'nucleus') return
+  const summon = useCallback(() => {
+    if (!voiceContext.current(voiceOrigin) || memoryMode === 'loading' || stateRef.current !== 'nucleus') return
     setState('opening')
     setTimeout(() => {
+      if (!voiceContext.current(voiceOrigin)) return
       setState('active')
-      // James responde com a saudação apropriada
-      if (greeting) {
-        const hour = new Date().getHours()
-        const period = hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite'
-        const responses: Record<string, string> = {
-          'ola':       `${period}, Comandante! James ativo. Como posso ajudar?`,
-          'bom dia':   `Bom dia, Comandante! Pronto para o trabalho.`,
-          'boa tarde': `Boa tarde, Comandante! Estou à disposição.`,
-          'boa noite': `Boa noite, Comandante! No que posso ser útil?`,
-          'default':   `${period}, Comandante! James online. O que precisa?`,
-        }
-        const reply = responses[greeting] ?? responses['default']
-        speak(reply).catch(() => {})
-      }
+      setTimeout(() => { if (voiceContext.current(voiceOrigin)) startListening() }, 150)
     }, 750)
-  }, [speak])
+  }, [startListening, voiceContext, voiceOrigin, memoryMode])
 
   const dismiss = useCallback(() => {
+    requestRef.current?.abort(); requestRef.current = null
+    stopRecognition()
     audioRef.current?.pause()
-    destroyVAD()
-    pendingCtxRef.current = ''
-    busyRef.current = false
+    window.speechSynthesis?.cancel()
     setState('closing')
-    setTimeout(() => setState('nucleus'), 700)
-  }, [destroyVAD])
+    setTimeout(() => { if (voiceContext.current(voiceOrigin)) setState('nucleus') }, 700)
+  }, [stopRecognition, voiceContext, voiceOrigin])
 
-  // ── Wake word listener (Web Speech API — nucleus only) ──────────────────
-  // Detecta saudações como "Olá James", "Bom dia James", etc.
   useEffect(() => {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition
-    if (!SR) return
-    let alive = true
-    let rec: ISpeechRecognition | null = null
-
-    const loop = () => {
-      if (!alive) return
-      if (stateRef.current !== 'nucleus') { setTimeout(loop, 800); return }
-      try {
-        rec = new SR()
-        rec.lang = 'pt-BR'; rec.continuous = false; rec.interimResults = false
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        rec.onresult = (e: any) => {
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const heard = Array.from(e.results as any[]).map((r: any) => r[0].transcript.toLowerCase()).join(' ')
-          const h = heard.replace(/[.,!?;:]/g, '').trim()
-
-          // Detecta qual tipo de saudação pra James responder adequadamente
-          if (h.includes('bom dia') && (h.includes('james') || h.includes('núcleo') || h.includes('nucleo'))) {
-            summon('bom dia')
-          } else if (h.includes('boa tarde') && (h.includes('james') || h.includes('núcleo') || h.includes('nucleo'))) {
-            summon('boa tarde')
-          } else if (h.includes('boa noite') && (h.includes('james') || h.includes('núcleo') || h.includes('nucleo'))) {
-            summon('boa noite')
-          } else if ((h.includes('olá') || h.includes('ola') || h.includes('hey') || h.includes('ei') || h.includes('eai') || h.includes('e aí') || h.includes('e ai')) && (h.includes('james') || h.includes('núcleo') || h.includes('nucleo'))) {
-            summon('ola')
-          } else if (h.includes('james') || h.includes('núcleo') || h.includes('nucleo')) {
-            summon('default')
-          }
-        }
-        rec.onend  = () => { if (alive) setTimeout(loop, 400) }
-        rec.onerror = () => { if (alive) setTimeout(loop, 1200) }
-        rec.start()
-      } catch { if (alive) setTimeout(loop, 1500) }
-    }
-
-    const t = setTimeout(loop, 600)
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    if (!Recognition) return
+    const controller = startJamesWakeListener({
+      createRecognition: () => new Recognition(),
+      isCurrent: () => voiceContext.current(voiceOrigin),
+      shouldListen: () => memoryMode !== 'loading' && stateRef.current === 'nucleus',
+      onWake: summon,
+    })
+    wakeControllerRef.current = controller
     return () => {
-      alive = false
-      clearTimeout(t)
-      try {
-        rec?.stop()
-      } catch (error) {
-        if (!(error instanceof DOMException && error.name === 'InvalidStateError')) {
-          console.warn('[James Wake Word] Falha ao interromper reconhecimento:', error)
-        }
-      }
+      if (wakeControllerRef.current === controller) wakeControllerRef.current = null
+      controller()
     }
-  }, [summon])
+  }, [summon, voiceContext, voiceOrigin, memoryMode])
 
-  // ── Cleanup on unmount ──────────────────────────────────────────────────
-  useEffect(() => {
-    return () => {
-      audioRef.current?.pause()
-      destroyVAD()
-    }
-  }, [destroyVAD])
+  useEffect(() => () => {
+    stopRecognition()
+    audioRef.current?.pause()
+    window.speechSynthesis?.cancel()
+    if (watchdogRef.current) clearTimeout(watchdogRef.current)
+  }, [stopRecognition])
 
-  // ── Orb click ───────────────────────────────────────────────────────────
   const handleOrbClick = useCallback(() => {
-    // CRÍTICO: Desbloquear audio no gesto direto do usuário
     unlockAudio()
-    const s = stateRef.current
-    console.log('[James] Orb clicado, state:', s)
-    if (s === 'nucleus')  { summon('default'); return }                      // clique acorda James com saudação
-    if (s === 'opening')  return
-    if (s === 'speaking') { audioRef.current?.pause(); setState('active');  return }
-    if (s === 'active' || s === 'waiting') { dismiss();                     return }
-  }, [dismiss, summon, unlockAudio])
-
+    const current = stateRef.current
+    if (current === 'nucleus') { summon(); return }
+    if (current === 'opening' || current === 'thinking') return
+    if (current === 'speaking') {
+      audioRef.current?.pause()
+      window.speechSynthesis?.cancel()
+      setState('active')
+      return
+    }
+    if (current === 'active' || current === 'waiting') startListening()
+    else if (current === 'listening') { stopRecognition(); setState('active') }
+  }, [startListening, stopRecognition, summon, unlockAudio])
   // ── UI helpers ──────────────────────────────────────────────────────────
 
   const isPresent = ['opening','active','listening','waiting','speaking','thinking'].includes(state)
@@ -828,6 +454,40 @@ export default function James() {
         }` : 'none',
         transition: 'all 0.5s ease', zIndex: 10,
       }} />
+
+      <section aria-label="Conversa com James" style={{ position: 'absolute', top: 60, right: 20, zIndex: 12, width: 'min(420px, calc(100vw - 40px))', padding: 16, borderRadius: 12, background: 'rgba(3,3,8,0.88)', color: '#e5e7eb' }}>
+        <p style={{ marginBottom: 8 }}>James · Núcleo</p>
+        <p style={{ fontSize: 12, marginBottom: 12 }}>Conversa de apoio. Nenhuma ação externa é executada. {memoryMode === 'persistent' ? 'Memória privada desta empresa, usuário e contato.' : memoryMode === 'loading' ? 'Consultando memória…' : 'Histórico temporário desta tela.'}</p>
+        {replyText && <p role="status" style={{ whiteSpace: 'pre-wrap', maxHeight: '30vh', overflow: 'auto', userSelect: 'text', marginBottom: 12 }}>{replyText}</p>}
+        {conversationError && <p role="alert" style={{ color: '#fca5a5', marginBottom: 8 }}>{conversationError}</p>}
+        <form onSubmit={event => { event.preventDefault(); void submitCommand(draft) }}>
+          <label htmlFor="james-command">Mensagem para James</label>
+          <textarea id="james-command" value={draft} maxLength={4000} disabled={state === 'thinking' || state === 'speaking'} onChange={event => setDraft([...event.target.value].slice(0, 2000).join(''))} rows={3} style={{ width: '100%', color: '#e5e7eb', background: '#111827', marginTop: 6, padding: 8 }} />
+          <button type="submit" disabled={!draft.trim() || memoryMode === 'loading' || state === 'thinking' || state === 'speaking'} style={{ padding: 8 }}> {state === 'thinking' ? 'Consultando…' : 'Enviar'} </button>
+          <button type="button" disabled={memoryMode === 'loading' || state === 'thinking' || state === 'speaking'} onClick={() => { void (async () => {
+            if (memoryMode === 'loading' || requestRef.current) return
+            const operation = operationGate.begin()
+            if (operation === null) return
+            advanceJamesVoiceContext(voiceContext, () => requestVoiceRender(value => value + 1)); stopRecognition()
+            const closingSession = sessionRef.current
+            try {
+            if (memoryMode === 'persistent') {
+              try { await accessJamesMemory(backendFetch, 'close', closingSession, contactId, AbortSignal.timeout(15000)) }
+              catch { if (operationGate.current(operation)) setConversationError('Não foi possível encerrar. Retome a conversa para conferir o estado.'); return }
+            }
+            if (!operationGate.current(operation)) return
+            conversation.current = []; pendingTurn.current = null; sessionRef.current = crypto.randomUUID()
+            try { rememberSession(localStorage, memoryKey, sessionRef.current, memoryMode) } catch { /* storage inaccessible */ }
+            setReplyText(''); setConversationError(''); setDraft('')
+            } finally { operationGate.finish(operation) }
+          })() }} style={{ padding: 8 }}>Nova conversa</button>
+          <button type="button" disabled={memoryMode === 'loading' || state === 'thinking' || state === 'speaking'} onClick={() => {
+            if (memoryMode === 'loading' || requestRef.current || operationGate.begin() === null) return
+            advanceJamesVoiceContext(voiceContext, () => requestVoiceRender(value => value + 1)); stopRecognition()
+            setMemoryMode('loading'); setMemoryRefresh(value => value + 1)
+          }} style={{ padding: 8 }}>Retomar conversa</button>
+        </form>
+      </section>
 
       {/* Back button */}
       <button

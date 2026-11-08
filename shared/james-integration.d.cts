@@ -1,0 +1,1 @@
+export function configuredHandler(options: { env: Record<string,string|undefined>; createClient: (...args: any[]) => any; fetchImpl?: typeof fetch }): (request: any) => Promise<{status: number;body: any}>;
